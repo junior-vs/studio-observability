@@ -5,7 +5,7 @@
 > Unified structured logging, distributed tracing, telemetry, and audit — in a single dependency.
 
 [![Java 21](https://img.shields.io/badge/Java-21-blue?logo=openjdk)](https://openjdk.org/projects/jdk/21/)
-[![Quarkus 3.20](https://img.shields.io/badge/Quarkus-3.20-red?logo=quarkus)](https://quarkus.io/)
+[![Quarkus 3.27](https://img.shields.io/badge/Quarkus-3.27-red?logo=quarkus)](https://quarkus.io/)
 [![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-native-blueviolet)](https://opentelemetry.io/)
 ![Status: Draft](https://img.shields.io/badge/Status-Draft-yellow)
 
@@ -60,6 +60,7 @@ OBSERVA4J solves this by enforcing the **5 Ws framework** at the library boundar
 | [Telemetry & Metrics](concepts/TELEMETRY.md) | Counters, histograms, gauges, Prometheus export |
 | [Health Check API](concepts/HEALTH_CHECK.md) | Liveness, readiness, and custom health contributors |
 | [Exception Tracking](concepts/EXCEPTION_TRACKING.md) | Centralized exception reporting and de-duplication |
+| [FAULT_TOLERANCE.md](concepts/FAULT_TOLERANCE.md)| xx |
 
 ### Reference
 
@@ -103,9 +104,111 @@ No boilerplate. No repeated context fields. No manual string assembly.
 
 ---
 
+## Project Structure
+
+This project is structured as a **Quarkus Extension** with multi-module Maven architecture:
+
+```
+observa4j/
+├── pom.xml                    # Parent aggregator POM
+├── runtime/                   # Runtime module (classpath code)
+│   ├── pom.xml
+│   └── src/main/
+│       ├── java/              # Core observability APIs
+│       └── resources/
+│           └── META-INF/
+│               └── quarkus-extension.yaml
+├── deployment/                # Deployment module (build-time)
+│   ├── pom.xml
+│   └── src/main/java/         # BuildStep processors
+├── integration-tests/         # Integration tests
+│   ├── pom.xml
+│   └── src/test/
+└── concepts/                  # Design documentation
+    ├── VISION.md
+    ├── ARCHITECTURE.md
+    └── ...
+```
+
+**Module Responsibilities:**
+
+- **runtime** — Contains the public API, CDI beans, interceptors, and runtime logic that applications use
+- **deployment** — Contains build-time augmentation code (`@BuildStep` processors) for Quarkus optimizations
+- **integration-tests** — Test application that validates the extension works correctly
+
+---
+
+## Getting Started
+
+### Installation (Future)
+
+Once published, add the extension to your Quarkus project:
+
+```bash
+quarkus ext add io.github.observa4j:observa4j
+```
+
+Or manually in `pom.xml`:
+
+```xml
+<dependency>
+    <groupId>io.github.observa4j</groupId>
+    <artifactId>observa4j-deployment</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
+```
+
+### Building the Extension
+
+```bash
+# Build all modules
+mvn clean install
+
+# Build without running tests
+mvn clean install -DskipTests
+
+# Run integration tests
+cd integration-tests
+mvn clean verify
+```
+
+### Development Mode
+
+```bash
+# Run integration tests in dev mode
+cd integration-tests
+mvn quarkus:dev
+```
+
+---
+
 ## Status
 
-This repository contains the **vision and design documentation** for OBSERVA4J. Implementation has not yet begun. See the [roadmap](VISION.md#roadmap) and [open questions](OPEN_QUESTIONS.md) before contributing.
+**Current Phase:** Extension Structure Complete ✅
+
+- ✅ Multi-module Maven structure created
+- ✅ Runtime and deployment modules configured
+- ✅ Extension metadata (quarkus-extension.yaml) defined
+- ✅ Integration test infrastructure ready
+- ⏳ Core API implementation (in progress)
+- ⏳ BuildStep processors (in progress)
+
+This repository now contains the **complete Quarkus extension structure** with design documentation. Core implementation is in progress. See the [roadmap](concepts/VISION.md#roadmap) and [open questions](concepts/OPEN_QUESTIONS.md) for details.
+
+---
+
+## Contributing
+
+This project follows the [Coding Standards](concepts/CODING_STANDARDS.md) defined in the concepts documentation.
+
+### Development Workflow
+
+1. Read the [Vision](concepts/VISION.md) and [Architecture](concepts/ARCHITECTURE.md) documents
+2. Review the relevant concept document for your area (e.g., [Structured Logging](concepts/STRUCTURED_LOGGING.md))
+3. Implement runtime APIs in the `runtime` module
+4. Add corresponding build-time logic in the `deployment` module
+5. Write integration tests in the `integration-tests` module
+6. Submit a pull request
 
 ---
 

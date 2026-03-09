@@ -1,0 +1,41 @@
+## OBSERVA4J Configuration Template
+## Copy these properties to your application.properties and customize
+
+## Core Observability Configuration
+#observa4j.service.name=my-service
+#observa4j.context.hostname-auto=true
+
+## Structured Logging
+#quarkus.log.console.format=json
+#quarkus.log.console.json=true
+#observa4j.fields.standard=default
+
+## GELF Logging (Graylog/Logstash)
+#quarkus.log.handler.gelf.enabled=false
+#quarkus.log.handler.gelf.host=localhost
+#quarkus.log.handler.gelf.port=12201
+#quarkus.log.handler.gelf.version=1.1
+
+## OpenTelemetry Tracing
+#quarkus.otel.enabled=true
+#quarkus.otel.traces.exporter=otlp
+#quarkus.otel.exporter.otlp.endpoint=http://localhost:4317
+
+## Micrometer Metrics
+#quarkus.micrometer.enabled=true
+#quarkus.micrometer.export.prometheus.enabled=true
+#quarkus.micrometer.export.prometheus.path=/q/metrics
+
+## Health Checks
+#quarkus.smallrye-health.root-path=/q/health
+#quarkus.smallrye-health.liveness-path=/q/health/live
+#quarkus.smallrye-health.readiness-path=/q/health/ready
+
+## Audit Logging
+#observa4j.audit.enabled=true
+#observa4j.audit.include-state-changes=true
+
+## Exception Tracking
+#observa4j.exceptions.enabled=true
+#observa4j.exceptions.backend=sentry
+#observa4j.exceptions.sentry.dsn=https://your-sentry-dsn

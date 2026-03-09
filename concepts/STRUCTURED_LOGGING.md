@@ -11,24 +11,62 @@ Structured logging means every log event is a machine-parseable data structure (
 OBSERVA4J enforces structured logging at the library boundary. It is not optional.
 
 ---
-
 ## Why JSON?
 
-Plain-text logs require custom parsing rules for every field you want to extract. They break when messages contain unexpected characters and diverge silently across services.
+Plain-text logs require custom parsing rules for every field you want to
+extract. They break when messages contain unexpected characters and diverge
+silently across services.
 
 JSON eliminates this class of problem entirely:
 
 | Approach | Queryable? | Machine-parseable? | Cross-service consistent? |
-| --- | --- | --- | --- |
+|---|---|---|---|
 | `System.out.println("Order saved: " + id)` | No | No | No |
 | `log.info("Order saved: {}", id)` | No | No | No |
 | `logger.atInfo().addKeyValue("order_id", id).log("Order saved")` | **Yes** | **Yes** | **Yes** |
 
-Quarkus configuration to enable JSON output:
+JSON output is activated by `quarkus-logging-json`, which is declared as
+a dependency in the project. This extension replaces the default Quarkus
+text formatter with the JBoss LogManager `JsonFormatter`.
 
+The correct activation property is:
 ```properties
-quarkus.log.console.json=true
+quarkus.log.console.format=json
 ```
+
+> ⚠️ `quarkus.log.console.json=true` is **not** the correct property when
+> using `quarkus-logging-json`. That property belongs to a different
+> formatter and has no effect here. Using it silently produces no JSON
+> output.
+
+### GELF output (Graylog / ELK)
+
+The project also declares `quarkus-logging-gelf`, which sends log events
+**directly** from the application to Graylog or Logstash via the GELF
+protocol (UDP or TCP) — without a Fluentd or Logstash intermediary.
+
+Both outputs are active simultaneously and independently:
+
+| Output | Protocol | Destination | Format |
+|---|---|---|---|
+| Console | — | stdout | JSON (`quarkus-logging-json`) |
+| GELF handler | UDP / TCP | Graylog or Logstash | GELF |
+
+GELF configuration in `application.properties`:
+```properties
+quarkus.log.handler.gelf.enabled=true
+quarkus.log.handler.gelf.host=localhost
+quarkus.log.handler.gelf.port=12201
+quarkus.log.handler.gelf.version=1.1
+```
+
+> ⚠️ **GELF does not support nested JSON objects.** The nested fields
+> defined in [Field Names — Nested Object Fields](../reference/FIELD_NAMES.md#nested-object-fields)
+> are automatically flattened by the `GraylogFieldNameAdapter` before
+> transmission. Configure `observa4j.fields.standard=graylog` when GELF
+> is the active log destination.
+>
+> Example: `exception.class` → `exception_class`
 
 ---
 

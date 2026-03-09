@@ -61,49 +61,91 @@ queue_depth{queue="critical"}            4
 
 ## Aggregation Models
 
-Per microservices.io, there are two models for aggregating metrics:
+Per microservices.io, there are two models for aggregating metrics. With
+the declared dependencies, **both models are active simultaneously** — this
+is not a choice between one or the other.
 
 ### Pull Model (Prometheus)
 
-The metrics service periodically scrapes the `/q/metrics` endpoint on each service instance. This is the standard Prometheus model.
-
-```text
+The Prometheus registry (`quarkus-micrometer-registry-prometheus`) exposes
+a scrape endpoint that Prometheus polls periodically:
+```
 Prometheus ──── scrapes ───▶ /q/metrics (Quarkus)
      │
-     └──▶ Grafana (visualisation)
+     └──▶ Grafana (visualisation and alerting)
 ```
 
-**Advantages:** Simple service configuration; no network egress cost; Prometheus controls the scrape interval.
+**Advantages:** Simple service configuration; no network egress cost from
+the service; Prometheus controls the scrape interval.
 
-### Push Model
+### Push Model (OpenTelemetry Collector via OTLP)
 
-The service pushes metrics to a metrics aggregator (e.g., Prometheus Pushgateway, AWS CloudWatch, Datadog).
-
-```text
-Service instance ──── pushes ───▶ Metrics aggregator ───▶ Dashboards
+The `quarkus-micrometer-opentelemetry` bridge exports all Micrometer
+metrics via OTLP/gRPC to the OpenTelemetry Collector:
+```
+Service instance ──── OTLP/gRPC ───▶ OTel Collector ───▶ backends
 ```
 
-**Advantages:** Better for short-lived processes (batch jobs, serverless) that may not live long enough to be scraped.
+**Advantages:** Unified pipeline with traces and logs; no Prometheus
+infrastructure required for backends that support OTLP natively (Azure
+Application Insights, Grafana Cloud, Elastic).
 
+### Combined flow (this project)
+```
+Micrometer
+    │
+    ├──▶ Prometheus registry  ──▶ /q/metrics  ──▶ Prometheus → Grafana
+    │
+    └──▶ OTel bridge  ──▶ OTLP/gRPC  ──▶ OTel Collector → all OTLP backends
+```
+
+> When both channels are active, ensure that dashboards and alerts are
+> not double-counting metrics by reading from both Prometheus and an OTLP
+> backend simultaneously for the same service.
 ---
-
 ## Quarkus Integration
 
-OBSERVA4J uses Micrometer as the metrics facade, with Prometheus as the primary export format:
-
+The project declares three Micrometer-related dependencies that work
+together:
 ```xml
+<!-- Micrometer core facade -->
 <dependency>
     <groupId>io.quarkus</groupId>
     <artifactId>quarkus-micrometer</artifactId>
 </dependency>
+
+<!-- Prometheus scrape endpoint -->
 <dependency>
     <groupId>io.quarkus</groupId>
     <artifactId>quarkus-micrometer-registry-prometheus</artifactId>
 </dependency>
+
+<!-- OpenTelemetry bridge — exports Micrometer metrics via OTLP -->
+<dependency>
+    <groupId>io.quarkus</groupId>
+    <artifactId>quarkus-micrometer-opentelemetry</artifactId>
+</dependency>
 ```
 
-Quarkus automatically exposes metrics at `/q/metrics`.
+### How they interact
 
+`quarkus-micrometer-opentelemetry` is a bridge that causes all Micrometer
+metrics to be exported via OTLP in addition to the Prometheus endpoint.
+Both channels are active simultaneously:
+```
+Micrometer (facade)
+        │
+        ├──▶ Prometheus registry  ──▶ /q/metrics  ──▶ Prometheus scrape
+        │
+        └──▶ OTel bridge  ──▶ OTLP (gRPC)  ──▶ OTel Collector / backends
+```
+
+This means metrics, traces, and logs all flow through the same OTLP
+pipeline when the Collector is active — a single unified telemetry channel
+alongside the independent Prometheus scrape endpoint.
+
+> The documentation does not treat Prometheus and OpenTelemetry as
+> separate, mutually exclusive channels. Both are active by design.
 ---
 
 ## Automatic Metrics via Interceptor
@@ -190,6 +232,29 @@ OBSERVA4J also tracks infrastructure-level metrics relevant to the Health Check 
 | `queue.depth` | Gauge | Current depth of each background job queue |
 
 ---
+
+## JVM Metrics — Java Flight Recorder
+
+The project declares `quarkus-jfr`, which integrates Java Flight Recorder
+(JFR) with Quarkus. JFR exposes deep JVM events that complement the
+Micrometer infrastructure metrics:
+
+| JFR Event category | Examples |
+|---|---|
+| **GC** | Pause duration, GC cause, heap before/after |
+| **Threads** | Thread count, blocked threads, lock contention |
+| **Heap** | Allocation rate, TLAB statistics |
+| **JIT** | Compilation time, deoptimisation events |
+| **Network I/O** | Socket read/write durations |
+
+JFR events are exposed at the Quarkus JFR endpoint and can be correlated
+with Micrometer metrics and OTel traces by timestamp.
+
+> JFR data is particularly useful for diagnosing latency outliers
+> identified in trace histograms — the JFR heap and GC events often
+> explain P99 spikes that have no obvious application-level cause.
+
+No additional configuration is required beyond the declared dependency.
 
 ## Limitations
 

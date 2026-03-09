@@ -37,16 +37,17 @@ OBSERVA4J sits **inside** a Quarkus service. It is not a sidecar, not an agent, 
 
 ### 1. `observa4j-core`
 
-The central module. Defines the primary abstractions and the request-scoped context lifecycle.
+The central module. Defines the primary abstractions and the request-scoped
+context lifecycle.
 
 | Component | Type | Description |
-| --- | --- | --- |
+|---|---|---|
 | `ObservabilityContext` | Java record | Carrier for all context fields: `trace_id`, `span_id`, `request_id`, `user_id`, `hostname`, `pid` |
 | `ObservabilityContextProducer` | CDI `@RequestScoped` producer | Creates and destroys `ObservabilityContext` for each HTTP request |
 | `StructuredLogger` | CDI `@ApplicationScoped` bean | Primary logging API; wraps SLF4J; enforces 5 Ws; auto-attaches `ObservabilityContext` |
 | `ObservabilityEvent` | Sealed interface | Type hierarchy for `TechnicalEvent` and `BusinessEvent` |
 | `RequestIdFilter` | JAX-RS `ContainerRequestFilter` | Generates `request_id` and populates `ObservabilityContext` at request entry |
-
+| `FieldNameAdapter` | CDI interface | Remaps canonical field names to platform conventions at output time; selected via `observa4j.fields.standard`; built-in implementations: `default`, `ecs`, `datadog`, `graylog` |
 ### 2. `observa4j-tracing`
 
 Integrates OpenTelemetry for distributed tracing.
@@ -210,42 +211,61 @@ observa4j.health.external-apis=https://pay.example.com/health,https://ship.examp
 ```
 
 ---
-
 ## Production Data Flow (End-to-End)
-
-```text
+```
 User request
      │
      ▼
-[Quarkus Service + OBSERVA4J]
+[Quarkus 3.27.2 + OBSERVA4J]
      │
-     ├──▶ stdout (JSON logs)
+     ├──▶ stdout (JSON — quarkus-logging-json)
      │         │
      │         ▼
-     │    Fluentd / Logstash
-     │         │
-     │         ▼
-     │    Elasticsearch ──▶ Kibana (log queries, dashboards)
+     │    consumed by container runtime log driver
+     │    (e.g. Docker → file, Kubernetes → node log collector)
      │
-     ├──▶ OTLP (spans)
+     ├──▶ GELF (quarkus-logging-gelf — UDP/TCP, direct)
+     │         │
+     │         ├──▶ Graylog  (fields flattened by GraylogFieldNameAdapter)
+     │         └──▶ Logstash → Elasticsearch → Kibana
+     │
+     ├──▶ OTLP/gRPC — traces (quarkus-opentelemetry)
      │         │
      │         ▼
      │    OpenTelemetry Collector
      │         │
-     │         ▼
-     │    Jaeger / Zipkin (trace visualisation)
+     │         ├──▶ Jaeger / Zipkin (trace visualisation)
+     │         ├──▶ Elastic APM
+     │         └──▶ Azure Application Insights
      │
-     ├──▶ /q/metrics (Prometheus scrape)
+     ├──▶ OTLP/gRPC — metrics (quarkus-micrometer-opentelemetry bridge)
      │         │
      │         ▼
-     │    Prometheus ──▶ Grafana (metrics dashboards, alerts)
+     │    OpenTelemetry Collector  ──▶  same pipeline as traces above
      │
-     └──▶ AuditWriter (RDBMS / Kafka)
+     ├──▶ /q/metrics (Prometheus scrape — quarkus-micrometer-registry-prometheus)
+     │         │
+     │         ▼
+     │    Prometheus ──▶ Grafana (dashboards, alerts)
+     │
+     ├──▶ /q/health (quarkus-smallrye-health)
+     │         │
+     │         ▼
+     │    Load balancer / Kubernetes probes
+     │
+     ├──▶ /q/info (quarkus-info)
+     │         │
+     │         ▼
+     │    Build metadata, git commit, version — complement to /q/health
+     │
+     └──▶ AuditWriter
                │
                ▼
-          Audit database / Kafka topic
+          JSON log stream (event_type: AUDIT_*)
+               │
+               ▼
+          Consumer pipeline (separate process — platform responsibility)
 ```
-
 ---
 
 ## See Also
