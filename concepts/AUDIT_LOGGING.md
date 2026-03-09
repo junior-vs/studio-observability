@@ -15,7 +15,7 @@ Audit logging is the practice of recording user actions on business entities in 
 ## Why Audit Logging Is Different from Application Logging
 
 | Dimension | Application Log | Audit Record |
-|---|---|---|
+| --- | --- | --- |
 | **Purpose** | Debugging, incident response | Compliance, accountability, dispute resolution |
 | **Consumer** | Engineers, SRE | Legal, security, customer support, regulators |
 | **Retention** | Days to weeks | Months to years (regulatory requirements) |
@@ -31,7 +31,7 @@ Both are necessary. They are complementary, not interchangeable.
 Every audit record must answer:
 
 | Field | Description |
-|---|---|
+| --- | --- |
 | `actor_id` | The user who performed the action (`user_id` or system identity) |
 | `actor_ip` | Source IP address of the request |
 | `session_id` | Session identifier (links to authentication event) |
@@ -59,6 +59,7 @@ public void updateEmail(Long userId, String newEmail) {
 ```
 
 The interceptor:
+
 1. Captures the entity state **before** the method executes
 2. Allows the method to proceed
 3. Captures the entity state **after** the method completes
@@ -68,6 +69,7 @@ The interceptor:
 Per microservices.io, the challenge with audit logging is that "the auditing code is intertwined with the business logic, which makes the business logic more complicated." The `@Auditable` interceptor directly addresses this.
 
 ---
+
 ## AuditWriter — Persistence-Agnostic Design
 
 The `AuditWriter` is an injectable interface with a single responsibility:
@@ -77,7 +79,8 @@ emit the `AuditRecord` as a structured log event via `StructuredLogger`.
 implementations for RDBMS, MongoDB, or Kafka. Persistence is the
 consumer's responsibility, implemented in a separate process that
 subscribes to the log stream.
-```
+
+```text
 @Auditable interceptor
         │
         ▼
@@ -120,7 +123,6 @@ technology or topology.
 
 ---
 
-
 ## Immutability and Tamper-Evidence
 
 Tamper-evidence and immutability are **not enforced by the library**.
@@ -134,7 +136,7 @@ stored or retained.
 Recommended strategies at the infrastructure layer (outside library scope):
 
 | Strategy | Mechanism |
-|---|---|
+| --- | --- |
 | **Append-only database** | `INSERT`-only privileges for the consumer process |
 | **Kafka topic** | Retention policy and ACLs managed by the platform team |
 | **Write-once object storage** | S3 / GCS with Object Lock for regulatory retention |

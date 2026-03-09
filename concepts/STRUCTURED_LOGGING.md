@@ -19,7 +19,7 @@ Plain-text logs require custom parsing rules for every field you want to extract
 JSON eliminates this class of problem entirely:
 
 | Approach | Queryable? | Machine-parseable? | Cross-service consistent? |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `System.out.println("Order saved: " + id)` | No | No | No |
 | `log.info("Order saved: {}", id)` | No | No | No |
 | `logger.atInfo().addKeyValue("order_id", id).log("Order saved")` | **Yes** | **Yes** | **Yes** |
@@ -45,7 +45,7 @@ The library maintains a [canonical field name registry](FIELD_NAMES.md). Using s
 Every log event must carry the following fields. The library injects the context fields automatically:
 
 | Field | Source | Injected automatically? |
-|---|---|---|
+| --- | --- | --- |
 | `@timestamp` | System clock (UTC) | ✅ |
 | `severity` | Log level at call site | ✅ |
 | `message` | Developer-provided | ❌ |
@@ -56,6 +56,7 @@ Every log event must carry the following fields. The library injects the context
 | `hostname` | Environment | ✅ |
 
 ---
+
 ## MDC — Mapped Diagnostic Context
 
 The Mapped Diagnostic Context (MDC) is a thread-local key-value store in
@@ -64,6 +65,7 @@ on that thread. It is the mechanism by which OBSERVA4J injects context
 without requiring developers to repeat fields on every log statement.
 
 ### Minimum MDC Contents
+
 ```java
 MDC.put("request_id", requestId);
 MDC.put("service",    serviceName);
@@ -81,6 +83,7 @@ MDC.put("user_id",    userId);     // when authenticated
 The MDC must be cleared at the end of every request scope. Failure to do
 so causes context from one request to leak into subsequent requests on the
 same thread — a particularly insidious bug in thread-pooled servers.
+
 ```java
 try {
     chain.doFilter(request, response);
@@ -103,6 +106,7 @@ using:
 
 ...the execution may switch threads mid-request, silently dropping the MDC
 context. The required solution is:
+
 ```xml
 <dependency>
     <groupId>io.quarkus</groupId>
@@ -110,8 +114,8 @@ context. The required solution is:
 </dependency>
 ```
 
-With SmallRye Context Propagation enabled, Quarkus propagates MDC and
-OpenTelemetry context across thread boundaries automatically.
+With SmallRye Context Propagation enabled, Quarkus propagates MDC and OpenTelemetry context across thread boundaries automatically
+
 ---
 
 ## Log Levels
@@ -119,7 +123,7 @@ OpenTelemetry context across thread boundaries automatically.
 ### Guidance
 
 | Level | When to use |
-|---|---|
+| --- | --- |
 | `TRACE` | Very fine-grained internal state; never enabled in production |
 | `DEBUG` | Internal flow decisions, intermediate data; disabled in production by default |
 | `INFO` | State changes: persistence operations (create/update/delete), external calls, authentication, authorisation events |
@@ -208,7 +212,7 @@ The following data must **never** appear in log output:
 ### Permitted Approaches
 
 | Technique | Example |
-|---|---|
+| --- | --- |
 | **Masking** | `"card_number": "****-****-****-4242"` |
 | **Partial redaction** | `"email": "j***@example.com"` |
 | **Hashing** | `"user_id_hash": "sha256:9f86d0..."` |

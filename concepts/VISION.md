@@ -78,7 +78,7 @@ Modern applications built on microservice architectures face a fundamental obser
 ### 2.2 Target Audience
 
 | Consumer | Primary Needs |
-|---|---|
+| --- | --- |
 | **Java / Quarkus developers** | Emit structured, contextual logs and traces with minimal boilerplate; automatic MDC-equivalent context injection |
 | **Platform / SRE teams** | Enforce log format standards across all services; plug into existing Prometheus, OpenTelemetry, and Elasticsearch stacks |
 | **Security & Compliance teams** | Access tamper-evident audit trails of user actions for LGPD, SOC 2, and similar regulatory frameworks |
@@ -111,7 +111,7 @@ Modern applications built on microservice architectures face a fundamental obser
 ### 3.3 Differentiation from Existing Solutions
 
 | Capability | Existing Tools | OBSERVA4J Advantage |
-|---|---|---|
+| --- | --- | --- |
 | Structured Logging | SLF4J + Logback/Log4j2 (manual config per service) | 5 Ws enforcement built-in; JSON formatter pre-configured; zero boilerplate for context fields |
 | Distributed Tracing | OpenTelemetry SDK (complex instrumentation setup) | Pre-wired Quarkus integration; Trace ID / Span ID injected automatically at HTTP filter layer |
 | Audit Logging | Custom hand-rolled solutions or event-sourcing frameworks | Lightweight annotation-driven `@Auditable` interceptor; persistence-agnostic |
@@ -127,7 +127,7 @@ Modern applications built on microservice architectures face a fundamental obser
 A full description of each capability is maintained in the concepts documentation. The table below summarises the scope:
 
 | Capability | Document |
-|---|---|
+| --- | --- |
 | Structured Logging — 5 Ws Framework | [FIVE_WS.md](FIVE_WS.md) |
 | Log Consistency and JSON Format Standards | [STRUCTURED_LOGGING.md](STRUCTURED_LOGGING.md) |
 | Tagged / Contextual Logging (MDC) | [STRUCTURED_LOGGING.md](STRUCTURED_LOGGING.md) |
@@ -168,6 +168,7 @@ See [Field Name Registry](reference/FIELD_NAMES.md) for the full canonical field
 ### 5.3 Best Practices
 
 **Pass the full exception object, not just the message.**
+
 ```java
 // WRONG
 logger.error(e.getMessage());
@@ -177,6 +178,7 @@ logger.error("Failed to process order", e);
 ```
 
 **Use dynamic, specific messages with entity IDs.**
+
 ```java
 // WRONG
 log.error("Error saving");
@@ -188,6 +190,7 @@ log.error("Error saving Order#{}: duplicate key", orderId);
 **Log entity state at event time.** Include the relevant state of the entity at the moment of the event, not just its identifier. This allows post-incident reconstruction without querying the database.
 
 **Prefer structured key-value pairs over string interpolation.**
+
 ```java
 // WRONG — string interpolation
 log.info("Order " + id + " saved by user " + userId);
@@ -212,7 +215,7 @@ logger.atInfo()
 ### 6.1 Glossary
 
 | Term | Definition |
-|---|---|
+| --- | --- |
 | **Observability** | The ability to infer the internal state of a system from its external outputs (logs, traces, metrics). |
 | **Structured Log** | A log entry represented as a machine-parseable data structure (JSON) with named fields, as opposed to a plain-text line. |
 | **MDC** | Mapped Diagnostic Context — a thread-local map in SLF4J/Logback that stores key-value pairs automatically appended to every log event emitted on that thread. |
@@ -234,7 +237,7 @@ logger.atInfo()
 These are conceptual definitions. Implementation details are deferred to the design phase.
 
 | Abstraction | Description |
-|---|---|
+| --- | --- |
 | `ObservabilityContext` | The central carrier object for a request scope. Holds `trace_id`, `span_id`, `request_id`, `user_id`,  `hostname`, `pid`. Injected as a `@RequestScoped` CDI bean. |
 | `ObservabilityEvent` | A sealed interface representing any observable event. Subtypes: `TechnicalEvent` and `BusinessEvent`. |
 | `StructuredLogger` | The primary API for emitting events. Wraps SLF4J and automatically attaches the current `ObservabilityContext` to every event. Enforces the 5 Ws contract. |
@@ -264,6 +267,7 @@ structuredLogger.businessEvent("ORDER_COMPLETED",
 ```
 
 Emitted JSON:
+
 ```json
 {
   "@timestamp": "2026-03-09T14:32:01.123Z",
@@ -294,7 +298,7 @@ The library intercepts the call, captures before/after state, and writes an immu
 
 A user action triggers three downstream service calls:
 
-```
+```text
 User request → Order Service  (generates trace_id: "7d2c...")
                     ↓
               Payment Service  (propagates trace_id: "7d2c...", new span_id)
@@ -345,7 +349,7 @@ The load balancer sees `DOWN` and stops routing traffic to this instance — wit
 ### 8.3 Initial Roadmap
 
 | Phase | Version | Deliverables |
-|---|---|---|
+| --- | --- | --- |
 | **Foundation** | `v0.1` | `ObservabilityContext` CDI bean; `StructuredLogger` with JSON formatter and 5 Ws enforcement; JAX-RS filter for Request ID injection; basic Health Check API |
 | **Tracing** | `v0.2` | OpenTelemetry SDK integration (traces + spans); W3C TraceContext propagation; Trace ID in all log events; Jaeger and Zipkin exporters |
 | **Audit & Exceptions** | `v0.3` | `@Auditable` CDI interceptor; `AuditWriter` implementations (RDBMS, Kafka); `ExceptionReporter` with de-duplication and webhook notification; structured stack trace capture |
@@ -368,7 +372,7 @@ See [Open Questions](reference/OPEN_QUESTIONS.md) for the full list of ambiguiti
 
 ## 10. References
 
-- Taylor Scott — *"Logging in Production"*, SolidusConf 2020
+- Taylor Scott — _"Logging in Production"_, SolidusConf 2020
 - Chris Richardson — [Microservices.io: Application Logging](https://microservices.io/patterns/observability/application-logging.html)
 - Chris Richardson — [Microservices.io: Distributed Tracing](https://microservices.io/patterns/observability/distributed-tracing.html)
 - Chris Richardson — [Microservices.io: Audit Logging](https://microservices.io/patterns/observability/audit-logging.html)

@@ -7,7 +7,7 @@
 [![Java 21](https://img.shields.io/badge/Java-21-blue?logo=openjdk)](https://openjdk.org/projects/jdk/21/)
 [![Quarkus 3.20](https://img.shields.io/badge/Quarkus-3.20-red?logo=quarkus)](https://quarkus.io/)
 [![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-native-blueviolet)](https://opentelemetry.io/)
-[![Status: Draft](https://img.shields.io/badge/Status-Draft-yellow)]()
+![Status: Draft](https://img.shields.io/badge/Status-Draft-yellow)
 
 ---
 
@@ -16,7 +16,7 @@
 OBSERVA4J is a Java 21 module that consolidates the four pillars of modern observability into a single, cohesive library with a minimal and opinionated API surface:
 
 | Pillar | What it solves |
-|---|---|
+| --- | --- |
 | **Structured Logging** | Every log event carries the 5 Ws (Who, What, When, Where, Why) as queryable JSON |
 | **Distributed Tracing** | Each request gets a Trace ID that propagates across all downstream service calls |
 | **Telemetry & Metrics** | Application metrics (latency, counters, gauges) exported to Prometheus / Grafana |
@@ -45,29 +45,29 @@ OBSERVA4J solves this by enforcing the **5 Ws framework** at the library boundar
 ### Vision & Architecture
 
 | Document | Description |
-|---|---|
-| [Vision Document](VISION.md) | Purpose, objectives, scope, and roadmap |
-| [Architecture Overview](ARCHITECTURE.md) | Core abstractions, modules, and data flow |
+| --- | --- |
+| [Vision Document](concepts/VISION.md) | Purpose, objectives, scope, and roadmap |
+| [Architecture Overview](concepts/ARCHITECTURE.md) | Core abstractions, modules, and data flow |
 
 ### Concepts
 
 | Document | Description |
-|---|---|
-| [The 5 Ws Framework](FIVE_WS.md) | The logging model at the heart of the library |
-| [Structured Logging](STRUCTURED_LOGGING.md) | JSON format, field standards, MDC usage |
-| [Distributed Tracing](DISTRIBUTED_TRACING.md) | Trace ID, Span ID, W3C TraceContext propagation |
-| [Audit Logging](AUDIT_LOGGING.md) | User action records, compliance, @Auditable |
-| [Telemetry & Metrics](TELEMETRY.md) | Counters, histograms, gauges, Prometheus export |
-| [Health Check API](HEALTH_CHECK.md) | Liveness, readiness, and custom health contributors |
-| [Exception Tracking](EXCEPTION_TRACKING.md) | Centralized exception reporting and de-duplication |
+| --- | --- |
+| [The 5 Ws Framework](concepts/FIVE_WS.md) | The logging model at the heart of the library |
+| [Structured Logging](concepts/STRUCTURED_LOGGING.md) | JSON format, field standards, MDC usage |
+| [Distributed Tracing](concepts/DISTRIBUTED_TRACING.md) | Trace ID, Span ID, W3C TraceContext propagation |
+| [Audit Logging](concepts/AUDIT_LOGGING.md) | User action records, compliance, @Auditable |
+| [Telemetry & Metrics](concepts/TELEMETRY.md) | Counters, histograms, gauges, Prometheus export |
+| [Health Check API](concepts/HEALTH_CHECK.md) | Liveness, readiness, and custom health contributors |
+| [Exception Tracking](concepts/EXCEPTION_TRACKING.md) | Centralized exception reporting and de-duplication |
 
 ### Reference
 
 | Document | Description |
-|---|---|
-| [Field Name Registry](FIELD_NAMES.md) | Canonical field names for all log events |
-| [Coding Standards](CODING_STANDARDS.md) | Naming conventions and best practices |
-| [Open Questions](OPEN_QUESTIONS.md) | Ambiguities requiring resolution before detailed design |
+| --- | --- |
+| [Field Name Registry](concepts/FIELD_NAMES.md) | Canonical field names for all log events |
+| [Coding Standards](concepts/CODING_STANDARDS.md) | Naming conventions and best practices |
+| [Open Questions](concepts/OPEN_QUESTIONS.md) | Ambiguities requiring resolution before detailed design |
 
 ---
 
@@ -76,12 +76,14 @@ OBSERVA4J solves this by enforcing the **5 Ws framework** at the library boundar
 A developer logs a business event. The library automatically enriches it with the current observability context:
 
 **Developer writes:**
+
 ```java
 structuredLogger.businessEvent("ORDER_COMPLETED",
     Map.of("order_id", "ORD-9912", "order_value", 349.90, "currency", "BRL"));
 ```
 
 **Library emits:**
+
 ```json
 {
   "@timestamp": "2026-03-09T14:32:01.123Z",
@@ -111,7 +113,7 @@ This repository contains the **vision and design documentation** for OBSERVA4J. 
 
 This library is grounded in the following reference material:
 
-- Taylor Scott — *"Logging in Production"*, SolidusConf 2020
+- Taylor Scott — _"Logging in Production"_, SolidusConf 2020
 - Chris Richardson — [Microservices Observability Patterns](https://microservices.io/patterns/observability/)
 - Iluwatar — [java-design-patterns: microservices-log-aggregation](https://github.com/iluwatar/java-design-patterns/tree/master/microservices-log-aggregation)
 - Iluwatar — [java-design-patterns: microservices-distributed-tracing](https://github.com/iluwatar/java-design-patterns/tree/master/microservices-distributed-tracing)

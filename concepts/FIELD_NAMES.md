@@ -7,18 +7,17 @@
 ## Identity Fields — Who
 
 | Field | Type | Description | Injected automatically? |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `user_id` | `string` | Authenticated user's persistent identifier | ✅ (from CDI security context) |
 | `session_id` | `string` | Session identifier (used in audit records) | ✅ |
 | `actor_ip` | `string` | Source IP address of the current request | ✅ (from JAX-RS filter) |
-
 
 ---
 
 ## Event Fields — What
 
 | Field | Type | Description | Example |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `event_type` | `string` | Machine-readable event name | `ORDER_COMPLETED`, `LOGIN_FAILED` |
 | `message` | `string` | Human-readable event description | `"Order saved successfully"` |
 | `severity` | `string` | Log level | `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL` |
@@ -31,7 +30,7 @@
 ## Timestamp Fields — When
 
 | Field | Type | Description | Format |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `@timestamp` | `string` | UTC timestamp of the event | ISO-8601 with milliseconds: `2026-03-09T14:32:01.123Z` |
 | `duration_ms` | `number` | Duration of the operation in milliseconds | `23` |
 
@@ -42,7 +41,7 @@
 ### Request and Trace
 
 | Field | Type | Description | Injected automatically? |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `request_id` | `string` | UUID for one HTTP request lifecycle on one service | ✅ (JAX-RS filter — OBSERVA4J) |
 | `trace_id` | `string` | OpenTelemetry trace identifier (cross-service) | ✅ (Quarkus via `quarkus-opentelemetry` — **not OBSERVA4J**) |
 | `span_id` | `string` | OpenTelemetry span identifier (per operation) | ✅ (Quarkus via `quarkus-opentelemetry` — **not OBSERVA4J**) |
@@ -55,7 +54,7 @@
 ### Infrastructure
 
 | Field | Type | Description | Injected automatically? |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `hostname` | `string` | Hostname or container name of the emitting instance | ✅ (environment) |
 | `pid` | `number` | OS process identifier | ✅ (JVM runtime) |
 | `service_name` | `string` | Name of the service emitting this event | ✅ (config: `quarkus.application.name`) |
@@ -64,14 +63,14 @@
 ### Code Location
 
 | Field | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `stack_trace` | `array<string>` | Full stack trace as an array of frame strings |
 | `exception_cause` | `object` | Nested cause exception (same structure) |
 
 ### Background Jobs
 
 | Field | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `queue_name` | `string` | Background job queue name |
 | `job_id` | `string` | Unique identifier of the background job |
 | `worker_class` | `string` | Fully qualified class name of the worker |
@@ -83,7 +82,7 @@
 These fields are not injected automatically — developers provide them. The naming convention must be consistent across all services.
 
 | Field | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `order_id` | `string` | Order identifier |
 | `payment_id` | `string` | Payment transaction identifier |
 | `product_id` | `string` | Product identifier |
@@ -99,7 +98,7 @@ These fields are not injected automatically — developers provide them. The nam
 These fields appear only in audit records, not in standard log events:
 
 | Field | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `action` | `string` | Audit action type: `CREATE`, `UPDATE`, `DELETE`, `READ`, `LOGIN`, `LOGOUT` |
 | `entity_type` | `string` | Type of the affected entity |
 | `entity_id` | `string` | Identifier of the affected entity |
@@ -107,6 +106,7 @@ These fields appear only in audit records, not in standard log events:
 | `state_after` | `object` | Entity state snapshot after the action |
 
 ---
+
 ## Field Name Standard Alignment
 
 The canonical standard is **flat snake_case notation**: `trace_id`,
@@ -120,6 +120,7 @@ in native output.
 A `FieldNameAdapter` class remaps canonical names to platform-specific
 conventions at output time. The active adapter is selected via
 `application.properties`:
+
 ```properties
 # Default — no remapping (flat snake_case)
 observa4j.fields.standard=default
@@ -135,7 +136,7 @@ Built-in adapters ship for `default`, `ecs`, and `datadog`. A custom
 adapter may be provided via CDI.
 
 | Canonical (default) | ECS | Datadog |
-|---|---|---|
+| --- | --- | --- |
 | `trace_id` | `trace.id` | `dd.trace_id` |
 | `span_id` | `span.id` | `dd.span_id` |
 | `user_id` | `user.id` | `usr.id` |
@@ -154,6 +155,7 @@ adapter may be provided via CDI.
 Composite fields use nested JSON objects, not flat dot-notation keys.
 
 ### Exception
+
 ```json
 {
   "exception": {
@@ -172,6 +174,7 @@ Composite fields use nested JSON objects, not flat dot-notation keys.
 ```
 
 ### Audit State Snapshots
+
 ```json
 {
   "state_before": { "email": "old@example.com", "status": "active" },
@@ -186,13 +189,14 @@ Composite fields use nested JSON objects, not flat dot-notation keys.
 > a library concern.
 
 ---
+
 ## Prohibited Synonyms
 
 The following names are explicitly prohibited. If your service uses any
 of these, migrate to the canonical name.
 
 | Prohibited | Canonical | Reason |
-|---|---|---|
+| --- | --- | --- |
 | `order_number` | `order_id` | Inconsistent naming causes split facets |
 | `user_identifier` | `user_id` | Verbose; inconsistent |
 | `traceId` | `trace_id` | camelCase violates snake_case convention |

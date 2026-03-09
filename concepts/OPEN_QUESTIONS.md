@@ -9,7 +9,7 @@
 ## Status Legend
 
 | Symbol | Meaning |
-|---|---|
+| --- | --- |
 | 🔴 | Blocks implementation — must be resolved first |
 | 🟡 | Important but can be resolved during Phase 1 development |
 | 🟢 | Can be resolved later; has reasonable defaults |
@@ -36,7 +36,7 @@
 - An array field captures the chain but complicates single-value queries and Prometheus labels
 - Always including both fields adds noise for most log lines that have no relevance to the visitor transition
 
-**Resolved:** 2026-03-09 
+**Resolved:** 2026-03-09
 
 **Decision:** All clients are authenticated. `visitor_token` and anonymous
 session tracking are out of scope. The `ObservabilityContext` carries only
@@ -46,10 +46,11 @@ session tracking are out of scope. The `ObservabilityContext` carries only
 visitor-to-authenticated transition concept inapplicable.
 
 **Impact:**
-- [`FIVE_WS.md`](../concepts/FIVE_WS.md) — remove visitor identity subsection
+
+- [`FIVE_WS.md`](FIVE_WS.md) — remove visitor identity subsection
 - [`FIELD_NAMES.md`](FIELD_NAMES.md) — remove `visitor_token` row
-- [`ARCHITECTURE.md`](../ARCHITECTURE.md) — remove `visitor_token` from `ObservabilityContext`
-- [`VISION.md`](../VISION.md) — remove from abstractions table and open questions list
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — remove `visitor_token` from `ObservabilityContext`
+- [`VISION.md`](VISION.md) — remove from abstractions table and open questions list
 
 ---
 
@@ -87,7 +88,7 @@ buffer (`decision_wait`, recommended starting point: 10s, tunable per
 environment) and applies the following policy:
 
 | Environment | Sampler (App) | Collector policy |
-|---|---|---|
+| --- | --- | --- |
 | Local / Dev | `always_on` | 100% — no discard |
 | Staging | `always_on` | 50% success / 100% errors |
 | Production | `always_on` | 1–5% success / 100% errors |
@@ -110,9 +111,10 @@ requiring application changes per environment.
 window. A fixed 10s value is insufficient for those cases.
 
 **Impact:**
-- [`DISTRIBUTED_TRACING.md`](../concepts/DISTRIBUTED_TRACING.md) — update
+
+- [`DISTRIBUTED_TRACING.md`](DISTRIBUTED_TRACING.md) — update
   Sampling section; add `always_on` config example
-- [`ARCHITECTURE.md`](../ARCHITECTURE.md) — add Collector as explicit
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — add Collector as explicit
   component in the production data flow diagram
 
 ---
@@ -174,9 +176,10 @@ oversight) that require cryptographic audit integrity, this must be
 implemented at the infrastructure layer by the consuming team.
 
 **Impact:**
-- [`AUDIT_LOGGING.md`](../concepts/AUDIT_LOGGING.md) — remove built-in
+
+- [`AUDIT_LOGGING.md`](AUDIT_LOGGING.md) — remove built-in
   persistence implementations; update AuditWriter section; add Limitations
-- [`ARCHITECTURE.md`](../ARCHITECTURE.md) — remove RDBMS/Kafka from
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — remove RDBMS/Kafka from
   AuditWriter module; update data flow diagram
 
 ---
@@ -189,7 +192,7 @@ implemented at the infrastructure layer by the consuming team.
 **Context:** Three major standards use different field naming conventions for the same concepts. The library must choose one as primary or provide an adapter layer.
 
 | Standard | trace identifier | span identifier | user identifier |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | This registry (flat) | `trace_id` | `span_id` | `user_id` |
 | ECS (Elasticsearch) | `trace.id` | `span.id` | `user.id` |
 | OpenTelemetry OTLP | `trace_id` | `span_id` | N/A (resource attribute) |
@@ -223,6 +226,7 @@ All field names follow the flat snake_case pattern: `trace_id`, `span_id`,
 A `FieldNameAdapter` class is provided to remap canonical field names to
 platform-specific conventions at output time. The active adapter is selected
 via `application.properties`:
+
 ```properties
 # Default (no remapping)
 observa4j.fields.standard=default
@@ -252,6 +256,7 @@ framework-managed values.
 
 **4. Nested object keys for structured sub-objects.**
 Composite fields use nested JSON objects, not flat dot-notation keys:
+
 ```json
 {
   "exception": {
@@ -275,11 +280,12 @@ embedding platform-specific logic in the core library. Nested objects
 improve semantic clarity for composite fields.
 
 **Impact:**
-- [`STRUCTURED_LOGGING.md`](../concepts/STRUCTURED_LOGGING.md) — add MDC
+
+- [`STRUCTURED_LOGGING.md`](STRUCTURED_LOGGING.md) — add MDC
   ownership note for `trace_id` / `span_id`
 - [`FIELD_NAMES.md`](FIELD_NAMES.md) — update standard alignment section;
   add nested object fields section; update prohibited synonyms
-- [`ARCHITECTURE.md`](../ARCHITECTURE.md) — add `FieldNameAdapter` to
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — add `FieldNameAdapter` to
   `observa4j-core` module table
   
 ---

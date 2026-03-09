@@ -17,7 +17,7 @@ Observability in a modern system requires all three signals: logs, traces, and m
 ## The Three Pillars of Observability
 
 | Signal | What it tells you | Tool |
-|---|---|---|
+| --- | --- | --- |
 | **Logs** | What happened, with full context | Elasticsearch / Loki |
 | **Traces** | How a request moved through the system | Jaeger / Zipkin |
 | **Metrics** | How the system is performing in aggregate | Prometheus / Grafana |
@@ -30,7 +30,7 @@ Observability in a modern system requires all three signals: logs, traces, and m
 
 A value that only increases. Used to count occurrences.
 
-```
+```text
 http_requests_total{method="POST", route="/orders", status="200"} 14532
 http_errors_total{method="POST", route="/orders", error="timeout"} 23
 ```
@@ -39,7 +39,7 @@ http_errors_total{method="POST", route="/orders", error="timeout"} 23
 
 Records the distribution of values (e.g., request latencies). Enables percentile calculations.
 
-```
+```text
 http_request_duration_seconds_bucket{route="/orders", le="0.1"}  12100
 http_request_duration_seconds_bucket{route="/orders", le="1.0"}  14501
 http_request_duration_seconds_bucket{route="/orders", le="+Inf"} 14532
@@ -51,7 +51,7 @@ Histograms answer: _"What percentage of requests complete in under 200ms?"_
 
 A value that can increase or decrease. Used for current state measurements.
 
-```
+```text
 jvm_memory_used_bytes{area="heap"}       245123456
 db_connection_pool_active                12
 queue_depth{queue="critical"}            4
@@ -67,7 +67,7 @@ Per microservices.io, there are two models for aggregating metrics:
 
 The metrics service periodically scrapes the `/q/metrics` endpoint on each service instance. This is the standard Prometheus model.
 
-```
+```text
 Prometheus ──── scrapes ───▶ /q/metrics (Quarkus)
      │
      └──▶ Grafana (visualisation)
@@ -79,7 +79,7 @@ Prometheus ──── scrapes ───▶ /q/metrics (Quarkus)
 
 The service pushes metrics to a metrics aggregator (e.g., Prometheus Pushgateway, AWS CloudWatch, Datadog).
 
-```
+```text
 Service instance ──── pushes ───▶ Metrics aggregator ───▶ Dashboards
 ```
 
@@ -137,7 +137,8 @@ public class LoggingInterceptor {
 ```
 
 This produces:
-```
+
+```text
 method_execution_seconds{class="OrderService", method="processOrder"} 0.023
 ```
 
@@ -165,7 +166,7 @@ This enables Grafana dashboards for business KPIs — order volumes, revenue tot
 
 Aggregate latency metrics expose which routes are responsible for the most user-facing slowness:
 
-```
+```text
 P50 latency /api/orders/search  = 85ms
 P99 latency /api/orders/search  = 3200ms  ← bottleneck
 P99 latency /api/orders/create  = 180ms
@@ -180,7 +181,7 @@ This guides refactoring decisions based on real production data rather than assu
 OBSERVA4J also tracks infrastructure-level metrics relevant to the Health Check API:
 
 | Metric | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `db.pool.active` | Gauge | Active database connections |
 | `db.pool.max` | Gauge | Maximum pool size |
 | `jvm.memory.used` | Gauge | JVM heap and non-heap usage |

@@ -20,7 +20,7 @@ These two patterns are **complementary**, not competing. An exception should be 
 2. **Reported** — to the exception tracking service, for de-duplication, assignment, and resolution tracking
 
 | Concern | Log Aggregation | Exception Tracking |
-|---|---|---|
+| --- | --- | --- |
 | Storage | Append-only time series | Grouped by fingerprint |
 | De-duplication | None — every occurrence is a separate entry | Identical exceptions are grouped |
 | Notification | Requires manual alert configuration | Automatic on new exception types |
@@ -116,7 +116,7 @@ The `trace_id` field is particularly valuable: it links the exception report dir
 The `ExceptionReporter` supports configurable notification channels for new exception types:
 
 | Channel | Trigger |
-|---|---|
+| --- | --- |
 | **Webhook** | HTTP POST to a configured URL (Slack, PagerDuty, Teams) |
 | **Email** | Notification to a configured address |
 | **Kafka topic** | Event published for downstream consumers |
@@ -140,6 +140,7 @@ exceptionReporter.report(e);
 ```
 
 The exception object contains:
+
 - `getClass().getName()` — for fingerprinting and grouping
 - `getStackTrace()` — for locating the bug
 - `getCause()` — for understanding root causes in wrapped exceptions
@@ -154,7 +155,7 @@ Discarding the object discards all of this.
 OBSERVA4J's `ExceptionReporter` ships with adapters for:
 
 | Backend | Type | Notes |
-|---|---|---|
+| --- | --- | --- |
 | **Sentry** | SaaS / self-hosted | Industry standard; excellent grouping and context |
 | **Rollbar** | SaaS | Strong deployment tracking integration |
 | **Bugsnag** | SaaS | Good for multi-platform teams |
@@ -177,7 +178,7 @@ Per microservices.io: _"The exception tracking service is additional infrastruct
 
 ## See Also
 
-- [Structured Logging](STRUCTURED_LOGGING.md) — exceptions are logged *and* reported; these are complementary
+- [Structured Logging](STRUCTURED_LOGGING.md) — exceptions are logged _and_ reported; these are complementary
 - [5 Ws Framework](FIVE_WS.md) — the _What_ and _Where_ dimensions of an exception
 - [Open Questions](OPEN_QUESTIONS.md#8-exception-deduplication-strategy) — fingerprinting strategy
 - [microservices.io: Exception Tracking Pattern](https://microservices.io/patterns/observability/exception-tracking.html)

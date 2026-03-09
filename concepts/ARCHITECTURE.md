@@ -8,7 +8,7 @@
 
 OBSERVA4J sits **inside** a Quarkus service. It is not a sidecar, not an agent, and not a separate process. It is a library that the service's code depends on directly.
 
-```
+```text
 ┌─────────────────────────────────────────────────────┐
 │                   Quarkus Service                   │
 │                                                     │
@@ -40,7 +40,7 @@ OBSERVA4J sits **inside** a Quarkus service. It is not a sidecar, not an agent, 
 The central module. Defines the primary abstractions and the request-scoped context lifecycle.
 
 | Component | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `ObservabilityContext` | Java record | Carrier for all context fields: `trace_id`, `span_id`, `request_id`, `user_id`, `hostname`, `pid` |
 | `ObservabilityContextProducer` | CDI `@RequestScoped` producer | Creates and destroys `ObservabilityContext` for each HTTP request |
 | `StructuredLogger` | CDI `@ApplicationScoped` bean | Primary logging API; wraps SLF4J; enforces 5 Ws; auto-attaches `ObservabilityContext` |
@@ -52,24 +52,23 @@ The central module. Defines the primary abstractions and the request-scoped cont
 Integrates OpenTelemetry for distributed tracing.
 
 | Component | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `TraceContextExtractor` | Utility class | Extracts `trace_id` and `span_id` from the active OpenTelemetry span |
 | `TraceContextPropagator` | JAX-RS `ClientRequestFilter` | Injects W3C `traceparent` header into outbound HTTP calls |
 | `SpanRecorder` | CDI bean | Records span start/end times and exports via the configured exporter |
-
 
 ### 3. `observa4j-audit`
 
 Audit logging with annotation-driven interception.
 
 | Component | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `@Auditable` | CDI interceptor binding annotation | Marks methods for automatic audit event emission |
 | `AuditInterceptor` | CDI interceptor | Captures before/after state; emits `AuditRecord` via `StructuredLogger` |
 | `AuditRecord` | Java record | Immutable audit event: actor, action, entity, states, timestamp, trace_id |
 | `AuditWriter` | CDI interface | Emits the `AuditRecord` as a structured JSON log event — no built-in persistence implementations |
 
-```
+```text
      └──▶ AuditWriter
                │
                ▼
@@ -82,13 +81,12 @@ Audit logging with annotation-driven interception.
 
 ---
 
-
 ### 4. `observa4j-metrics`
 
 Telemetry and metrics via Micrometer.
 
 | Component | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `@Logged` | CDI interceptor binding annotation | Marks methods for automatic timing and logging |
 | `LoggingInterceptor` | CDI interceptor | Records method execution time via `MeterRegistry` |
 | `BusinessEventMetrics` | CDI bean | Emits Micrometer counters when `BusinessEvent` instances are logged |
@@ -98,7 +96,7 @@ Telemetry and metrics via Micrometer.
 Health Check API implementation.
 
 | Component | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `HealthContributor` | CDI interface | Extensible health check contract |
 | `DatabaseHealthContributor` | `@Readiness` impl | Checks connection pool status |
 | `ExternalApiHealthContributor` | `@Readiness` impl | Checks reachability of configured downstream URLs |
@@ -109,7 +107,7 @@ Health Check API implementation.
 Centralised exception tracking.
 
 | Component | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `ExceptionReporter` | CDI bean | Enriches, de-duplicates, and forwards exceptions to the configured backend |
 | `ExceptionFingerprinter` | Utility class | Computes a stable fingerprint from exception class + stack frames |
 | `GlobalExceptionHandler` | JAX-RS `ExceptionMapper` | Catches all unhandled exceptions; delegates to `ExceptionReporter` |
@@ -121,7 +119,7 @@ Centralised exception tracking.
 
 The following sequence shows how context is created, propagated, and cleaned up for a typical HTTP request:
 
-```
+```text
 1. HTTP request arrives
       │
       ▼
@@ -153,7 +151,7 @@ The following sequence shows how context is created, propagated, and cleaned up 
 
 ## Data Flow
 
-```
+```text
 Business Event
       │
       ▼
@@ -215,7 +213,7 @@ observa4j.health.external-apis=https://pay.example.com/health,https://ship.examp
 
 ## Production Data Flow (End-to-End)
 
-```
+```text
 User request
      │
      ▼
@@ -252,7 +250,7 @@ User request
 
 ## See Also
 
-- [Vision Document](VISION.md) — scope, roadmap, and objectives
+- [Vision Document](concepts/VISION.md) — scope, roadmap, and objectives
 - [5 Ws Framework](concepts/FIVE_WS.md) — the logging model
 - [Distributed Tracing](concepts/DISTRIBUTED_TRACING.md) — trace context propagation detail
-- [Field Name Registry](reference/FIELD_NAMES.md) — all canonical field names
+- [Field Name Registry](FIELD_NAMES.md) — all canonical field names

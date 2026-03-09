@@ -7,7 +7,7 @@
 ## Language and Platform
 
 | Requirement | Specification |
-|---|---|
+| --- | --- |
 | Java version | Java 21 (minimum) |
 | Framework | Quarkus 3.20 |
 | Dependency injection | CDI (`@ApplicationScoped`, `@RequestScoped`, `@Dependent`) — no Spring annotations |

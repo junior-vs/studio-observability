@@ -10,7 +10,7 @@
 The 5 Ws is the foundational logging model for OBSERVA4J. Borrowed from journalism, it asserts that every log event must be able to answer five questions:
 
 | Dimension | Question | Example Fields |
-|---|---|---|
+| --- | --- | --- |
 | **Who** | Who triggered this event? | `user_id`, `hostname` |
 | **What** | What happened? | `event_type`, `message`, `order_id` |
 | **When** | When did it happen? | `@timestamp` (UTC, millisecond precision) |
@@ -72,7 +72,7 @@ log.error("Error processing payment: Order#{} — Card declined", orderId);
 The `What` covers both:
 
 | Type | Example `event_type` | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | Technical | `EXCEPTION`, `DB_QUERY_FAILED` | Debugging and incident response |
 | Business | `ORDER_COMPLETED`, `CART_ABANDONED` | Analytics, KPIs, business intelligence |
 
@@ -179,7 +179,8 @@ The _Why_ is the only dimension that cannot be stored in a single field. It is t
 ### Example
 
 Individual log lines:
-```
+
+```text
 [14:31:58.001] INFO  user_id=USR-445  event=CHECKOUT_STARTED     order_id=ORD-9912
 [14:31:58.240] INFO  user_id=USR-445  event=PAYMENT_INITIATED    order_id=ORD-9912
 [14:31:59.112] ERROR user_id=USR-445  event=PAYMENT_FAILED       order_id=ORD-9912  reason="card_declined"
@@ -234,7 +235,7 @@ Consistent field names and formats allow ML-based or threshold-based alerting:
 
 Timestamp deltas at request start and end allow aggregate latency analysis by route:
 
-```
+```text
 P99 latency for /api/orders/search = 3,200ms  ← identified bottleneck
 P99 latency for all other routes   = 180ms
 ```
@@ -246,7 +247,7 @@ This prioritises refactoring based on real production data, not assumptions.
 ## Summary
 
 | Dimension | Common Failure | Library Enforcement |
-|---|---|---|
+| --- | --- | --- |
 | **Who** | No user or machine identity | Automatic context injection via `@RequestScoped ObservabilityContext` |
 | **What** | Generic messages without entity IDs | Field schema validation; `BusinessEvent` type |
 | **When** | Missing or low-precision timestamps | UTC millisecond `@timestamp` in every event |

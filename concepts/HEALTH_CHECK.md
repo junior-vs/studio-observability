@@ -17,7 +17,7 @@ A service instance can be running but incapable of handling requests. For exampl
 Quarkus exposes health endpoints at:
 
 | Endpoint | Purpose |
-|---|---|
+| --- | --- |
 | `GET /q/health` | Combined liveness and readiness |
 | `GET /q/health/live` | Liveness probe |
 | `GET /q/health/ready` | Readiness probe |
@@ -30,7 +30,7 @@ Quarkus exposes health endpoints at:
 These two probes serve different purposes and must not be conflated:
 
 | Probe | Question | Failure action |
-|---|---|---|
+| --- | --- | --- |
 | **Liveness** | Is the JVM process alive and not deadlocked? | Container is **restarted** |
 | **Readiness** | Is this instance ready to receive traffic? | Traffic is **rerouted** to healthy instances |
 
@@ -43,7 +43,7 @@ A service can be **live** but **not ready** — for example, during startup whil
 OBSERVA4J provides pre-built health contributors for common infrastructure. Each contributor is injected automatically when the relevant extension is present:
 
 | Contributor | Checks | Trigger |
-|---|---|---|
+| --- | --- | --- |
 | `DatabaseHealthContributor` | Active connections vs. pool maximum; query timeout | `quarkus-jdbc-*` or `quarkus-hibernate-orm` |
 | `KafkaHealthContributor` | Broker reachability; consumer group lag | `quarkus-kafka-*` |
 | `ExternalApiHealthContributor` | HTTP GET to configured health URLs | Manual configuration |
