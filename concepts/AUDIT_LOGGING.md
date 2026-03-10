@@ -183,6 +183,6 @@ The following actions should always generate an audit record:
 
 - [5 Ws Framework](FIVE_WS.md) — the _Who_ and _What_ dimensions are central to every audit record
 - [Distributed Tracing](DISTRIBUTED_TRACING.md) — `trace_id` links audit records to the full request trace
-- [Open Questions](OPEN_QUESTIONS.md) — immutability, separation of concerns
+- [Open Questions](OPEN_QUESTIONS.md) — PII handling (#5), audit vs. log separation (#6)
 - [microservices.io: Audit Logging Pattern](https://microservices.io/patterns/observability/audit-logging.html)
 - [microservices.io: Event Sourcing Pattern](https://microservices.io/patterns/data/event-sourcing.html)

@@ -217,4 +217,4 @@ of these, migrate to the canonical name.
 - [5 Ws Framework](FIVE_WS.md) — how fields map to the five dimensions
 - [Structured Logging](STRUCTURED_LOGGING.md) — field injection via MDC
 - [Coding Standards](CODING_STANDARDS.md) — rules for field usage in code
-- [Open Questions](OPEN_QUESTIONS.md) — unresolved field naming decisions
+- [Open Questions](OPEN_QUESTIONS.md) — PII handling (#5), exception de-duplication (#8)

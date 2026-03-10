@@ -238,14 +238,15 @@ These are conceptual definitions. Implementation details are deferred to the des
 
 | Abstraction | Description |
 | --- | --- |
-| `ObservabilityContext` | The central carrier object for a request scope. Holds `trace_id`, `span_id`, `request_id`, `user_id`,  `hostname`, `pid`. Injected as a `@RequestScoped` CDI bean. |
+| `ObservabilityContext` | The central carrier object for a request scope. Holds `trace_id`, `span_id`, `request_id`, `user_id`, `hostname`, `pid`. Injected as a `@RequestScoped` CDI bean. |
 | `ObservabilityEvent` | A sealed interface representing any observable event. Subtypes: `TechnicalEvent` and `BusinessEvent`. |
 | `StructuredLogger` | The primary API for emitting events. Wraps SLF4J and automatically attaches the current `ObservabilityContext` to every event. Enforces the 5 Ws contract. |
 | `AuditRecord` | An immutable record capturing actor, action, target entity, before/after states, and timestamp. |
-| `AuditWriter` | An injectable interface with implementations for RDBMS, MongoDB, and Kafka. Receives `AuditRecord` instances from `@Auditable` interceptors. |
+| `AuditWriter` | An injectable interface that emits `AuditRecord` instances as structured log events (`event_type: AUDIT_*`). No built-in persistence implementations — persistence is the consumer's responsibility. |
 | `TraceContext` | A value object carrying W3C TraceContext headers for cross-service propagation. |
 | `HealthContributor` | A CDI interface that services implement to add custom health checks, composed into the `/q/health` response. |
 | `ExceptionReporter` | An injectable service that receives exceptions, enriches them with `ObservabilityContext`, de-duplicates by fingerprint, and forwards to the configured tracking backend. |
+| `FieldNameAdapter` | A CDI interface that remaps canonical field names to platform-specific conventions at output time. Built-in implementations: `default`, `ecs`, `datadog`, `graylog`. |
 
 ---
 
@@ -357,17 +358,21 @@ The load balancer sees `DOWN` and stops routing traffic to this instance — wit
 | **Production Ready** | `v1.0` | GraalVM Native Image compatibility; Mutiny context propagation; PII field masking; full documentation and example application |
 
 ---
-
 ## 9. Open Questions
 
-See [Open Questions](reference/OPEN_QUESTIONS.md) for the full list of ambiguities requiring resolution before detailed design begins. Key items:
+See [Open Questions](reference/OPEN_QUESTIONS.md) for the full list. Items #1–#4 are resolved.
 
-1. Identity array semantics for visitor-to-authenticated user transitions [corrected]
-2. Sampling strategy (head-based vs. tail-based) and default rates
-3. Audit record immutability enforcement at the storage layer
-4. Field name standard alignment (ECS dot-notation vs. flat notation)
-5. PII handling — opt-in or opt-out masking?
+**Resolved:**
+1. ✅ Identity array semantics — `user_id` only; no `visitor_token`
+2. ✅ Sampling strategy — `always_on` no app; tail-based no OTel Collector
+3. ✅ Audit record immutability — log stream apenas; sem persistência na extensão
+4. ✅ Field name standard — flat snake_case + `FieldNameAdapter` plugável
 
+**Open:**
+5. 🟡 PII handling — opt-in ou opt-out masking?
+6. 🟡 Audit vs. log separation — mesmo stream ou canal separado?
+7. 🟢 Background job framework scope — quais frameworks em v1?
+8. 🟡 Exception de-duplication strategy — algoritmo de fingerprint
 ---
 
 ## 10. References

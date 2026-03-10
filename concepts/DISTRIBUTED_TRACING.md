@@ -160,19 +160,21 @@ Each span records:
 
 ## Exporters
 
-OBSERVA4J supports exporting span data to:
+OBSERVA4J supports exporting span data to any OTLP-compatible backend via the
+OTel Collector or directly. Common targets:
 
 | Backend | Protocol | Use Case |
 | --- | --- | --- |
 | **Jaeger** | OTLP (gRPC or HTTP) | Open-source trace visualisation |
-| **Zipkin** | HTTP JSON | Lightweight trace visualisation |
-| **OpenTelemetry Collector** | OTLP | Vendor-neutral aggregation hub |
-| **AWS X-Ray** | OTLP via ADOT | AWS-native tracing |
+| **Grafana Tempo** | OTLP (gRPC) | Grafana-native trace backend |
+| **Elastic APM** | OTLP via OTel Collector | ELK stack trace visualisation |
+| **Azure Application Insights** | OTLP via `quarkus-opentelemetry-exporter-azure` | Unified Azure backend (logs + traces + metrics) |
+| **Zipkin** | HTTP JSON via Collector | Lightweight trace visualisation |
+| **OpenTelemetry Collector** | OTLP | Vendor-neutral fan-out hub |
 
-Configuration example (Quarkus):
-
+Configuration (Quarkus):
 ```properties
-quarkus.otel.exporter.otlp.traces.endpoint=http://jaeger:4317
+quarkus.otel.exporter.otlp.traces.endpoint=http://otel-collector:4317
 quarkus.otel.traces.sampler=parentbased_always_on
 ```
 
@@ -221,8 +223,9 @@ requiring application changes per environment.
 (batch jobs, file processing) where spans may outlast the default buffer
 window. A fixed 10s value is insufficient for those cases.
 
-> ⚠️ **Ambiguity — Sampling Strategy**
-> The default sampling strategy for OBSERVA4J (head-based vs. tail-based, and default sampling rates for production vs. development environments) is an [open question](OPEN_QUESTIONS.md#2-sampling-strategy). This decision has significant infrastructure implications. [Corrected]
+> See [Open Questions #2](OPEN_QUESTIONS.md#2-sampling-strategy) for the full
+> decision record, including rationale and the open caveat on `decision_wait`
+> tuning for long-running operations.
 
 ---
 
@@ -244,7 +247,10 @@ Per microservices.io: aggregating and storing trace data requires significant in
 ## See Also
 
 - [5 Ws Framework — Where Dimension](FIVE_WS.md#4-where--location) — how Trace ID extends the _Where_ Ws
-- [Field Name Registry](FIELD_NAMES.md) — `trace_id`, `span_id` field definitions
-- [Open Questions](OPEN_QUESTIONS.md#2-sampling-strategy) — unresolved sampling decisions
-- [OpenTelemetry Java Agent](https://opentelemetry.io/docs/instrumentation/java/automatic/) — automatic instrumentation
-- [W3C TraceContext](https://www.w3.org/TR/trace-context/) — the propagation standard
+- [Field Name Registry](../reference/FIELD_NAMES.md) — `trace_id`, `span_id` field definitions
+- [Open Questions #2](../reference/OPEN_QUESTIONS.md#2-sampling-strategy) — sampling decision record
+- [Fault Tolerance](FAULT_TOLERANCE.md) — how Retry and Circuit Breaker generate child spans
+- [Backend Output Contract](../reference/BACKENDS.md) — OTLP sampler contract
+- [Integration Guide](../guides/INTEGRATION_GUIDE.md) — backend-specific exporter configuration
+- [OpenTelemetry Java Agent](https://opentelemetry.io/docs/instrumentation/java/automatic/)
+- [W3C TraceContext](https://www.w3.org/TR/trace-context/)

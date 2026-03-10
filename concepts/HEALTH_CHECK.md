@@ -117,31 +117,24 @@ public class OrderQueueHealthContributor implements HealthCheck {
 ```
 
 ---
+## Deployment Integration
 
-## Kubernetes Integration
+The extension exposes the following endpoints for use by load balancers,
+service registries, and container orchestrators:
 
-Kubernetes uses health probes to manage pod lifecycle:
+| Endpoint | Probe type | Recommended use |
+| --- | --- | --- |
+| `GET /q/health/live` | Liveness | Restart the container on deadlock or unrecoverable JVM state |
+| `GET /q/health/ready` | Readiness | Remove from rotation on dependency failure; do not restart |
+| `GET /q/health/started` | Startup | Delay traffic until the application has fully initialised |
 
-```yaml
-livenessProbe:
-  httpGet:
-    path: /q/health/live
-    port: 8080
-  initialDelaySeconds: 10
-  periodSeconds: 30
+The extension does not prescribe how these endpoints are wired into the
+orchestration platform. Kubernetes probe configuration, OpenShift
+DeploymentConfig settings, and load balancer health check rules are
+the responsibility of the consuming team.
 
-readinessProbe:
-  httpGet:
-    path: /q/health/ready
-    port: 8080
-  initialDelaySeconds: 5
-  periodSeconds: 10
-```
-
-When the readiness probe returns `DOWN`, Kubernetes removes the pod from the service endpoint list — no traffic is routed to it — but does not restart it. This is the correct behaviour for a dependency failure (e.g., database temporarily unreachable): wait and retry, don't restart.
-
-When the liveness probe returns `DOWN`, Kubernetes restarts the pod. This is appropriate for deadlocks or unrecoverable JVM states.
-
+For reference probe configuration examples, see the
+[Integration Guide](../guides/INTEGRATION_GUIDE.md).
 ---
 
 ## Health Checks and Observability

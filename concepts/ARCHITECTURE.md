@@ -191,15 +191,9 @@ All OBSERVA4J configuration is under the `observa4j` prefix in `application.prop
 observa4j.service.name=order-service
 observa4j.context.hostname-auto=true
 
-# Tracing
-observa4j.tracing.exporter=jaeger
-observa4j.tracing.jaeger.endpoint=http://jaeger:4317
-observa4j.tracing.sampling.strategy=parentbased_always_on
-observa4j.tracing.sampling.rate=0.1
-
-# Audit
-observa4j.audit.writer=rdbms
-observa4j.audit.kafka.topic=audit-events
+# Tracing — sampler is always_on; sampling rates are configured in the OTel Collector, not here
+observa4j.tracing.exporter=otlp
+observa4j.tracing.otlp.endpoint=${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4317}
 
 # Exceptions
 observa4j.exceptions.reporter=sentry
@@ -208,6 +202,9 @@ observa4j.exceptions.sentry.dsn=https://...
 # Health
 observa4j.health.disk.min-free-gb=5
 observa4j.health.external-apis=https://pay.example.com/health,https://ship.example.com/health
+
+# Field name adapter
+observa4j.fields.standard=default
 ```
 
 ---
@@ -270,7 +267,9 @@ User request
 
 ## See Also
 
-- [Vision Document](concepts/VISION.md) — scope, roadmap, and objectives
+- [Vision Document](VISION.md) — scope, roadmap, and objectives
 - [5 Ws Framework](concepts/FIVE_WS.md) — the logging model
 - [Distributed Tracing](concepts/DISTRIBUTED_TRACING.md) — trace context propagation detail
-- [Field Name Registry](FIELD_NAMES.md) — all canonical field names
+- [Field Name Registry](reference/FIELD_NAMES.md) — all canonical field names
+- [Backend Output Contract](reference/BACKENDS.md) — signals, protocols, and formats
+- [Integration Guide](guides/INTEGRATION_GUIDE.md) — connecting to Graylog, ELK, Grafana, Azure

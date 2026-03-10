@@ -10,13 +10,14 @@
 
 | Symbol | Meaning |
 | --- | --- |
+| ✅ | Resolved — decision recorded below the question |
 | 🔴 | Blocks implementation — must be resolved first |
 | 🟡 | Important but can be resolved during Phase 1 development |
 | 🟢 | Can be resolved later; has reasonable defaults |
 
 ---
 
-## 1. Identity Array Semantics
+## 1. Identity Array Semantics  ✅ Resolved — 2026-03-09
 
 **Source:** [5 Ws Framework — Who](FIVE_WS.md#1-who--identity)
 **Priority:** 🔴 Blocks implementation
@@ -54,7 +55,7 @@ visitor-to-authenticated transition concept inapplicable.
 
 ---
 
-## 2. Sampling Strategy
+## 2. Sampling Strategy  ✅ Resolved — 2026-03-09
 
 **Source:** [Distributed Tracing](DISTRIBUTED_TRACING.md#sampling)
 **Priority:** 🔴 Blocks implementation
@@ -79,7 +80,7 @@ visitor-to-authenticated transition concept inapplicable.
 
 ---
 
-**Resolved:** [2026-03-09]
+✅ **Resolved:** [2026-03-09]    
 
 **Decision:** Tail-based sampling delegated entirely to the OpenTelemetry
 Collector. The application SDK is always configured as `always_on` — it sends
@@ -119,7 +120,7 @@ window. A fixed 10s value is insufficient for those cases.
 
 ---
 
-## 3. Audit Record Immutability
+## 3. Audit Record Immutability  ✅ Resolved — 2026-03-09
 
 **Source:** [Audit Logging](AUDIT_LOGGING.md#immutability-and-tamper-evidence)
 **Priority:** 🔴 Blocks implementation
@@ -142,7 +143,7 @@ window. A fixed 10s value is insufficient for those cases.
 
 ---
 
-**Resolved:** [2026-03-09]
+✅ **Resolved:** [2026-03-09]
 
 **Decision:**
 
@@ -184,7 +185,7 @@ implemented at the infrastructure layer by the consuming team.
 
 ---
 
-## 4. Field Name Standard Alignment
+## 4. Field Name Standard Alignment ✅ Resolved — 2026-03-09
 
 **Source:** [Field Name Registry](FIELD_NAMES.md#field-name-standard-alignment)
 **Priority:** 🟡 Important
@@ -210,6 +211,41 @@ implemented at the infrastructure layer by the consuming team.
 - Adopting ECS provides out-of-the-box compatibility with Elasticsearch but diverges from OpenTelemetry flat notation
 - Flat notation aligns with OpenTelemetry OTLP and is simpler to query in most tools
 - An adapter layer adds complexity but enables deployment in heterogeneous environments
+
+**Decision:**
+
+**1. Canonical standard: flat snake_case.**
+`trace_id`, `span_id`, `user_id`, `request_id`. ECS dot-notation and
+camelCase are prohibited in native output.
+
+**2. Pluggable `FieldNameAdapter`** selected via `observa4j.fields.standard`:
+```properties
+observa4j.fields.standard=default   # no remapping
+observa4j.fields.standard=ecs       # trace_id → trace.id
+observa4j.fields.standard=datadog   # trace_id → dd.trace_id
+observa4j.fields.standard=graylog   # flattens nested objects
+```
+
+Built-in adapters: `default`, `ecs`, `datadog`, `graylog`. Custom adapter
+via CDI. Adapter remaps names only — not values (known v1 limitation for
+Datadog 64-bit decimal vs OTel 128-bit hex).
+
+**3. 100% compatible with Quarkus/OpenTelemetry.** `trace_id` and `span_id`
+are owned by Quarkus via `quarkus-opentelemetry`. OBSERVA4J reads from MDC
+but never writes these fields.
+
+**4. Nested object keys for composite fields.** `exception.class`,
+`exception.message`, `state_before`, `state_after` use nested JSON objects,
+not flat dot-notation keys.
+
+**Rationale:** Flat notation aligns with OTel OTLP. Adapter pattern provides
+flexibility without embedding platform logic in core. Nested objects improve
+semantic clarity.
+
+**Impact applied:**
+- `FIELD_NAMES.md` — standard alignment section updated; nested object fields section added; `graylog` adapter added; prohibited synonyms updated
+- `STRUCTURED_LOGGING.md` — MDC ownership note for `trace_id`/`span_id` added
+- `ARCHITECTURE.md` — `FieldNameAdapter` added to `observa4j-core` module table
 
 ---
 
