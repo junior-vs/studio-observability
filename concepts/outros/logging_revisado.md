@@ -18,11 +18,15 @@ O objetivo desta revisão é afastar o logging do empirismo e fundamentá-lo em 
 
 ## 2. Fundamentação Teórica
 
-A formulação de uma heurística de logging robusta exige a triangulação de fontes de mercado e pesquisas acadêmicas. A fundamentação deste padrão baseia-se em três pilares:
+A formulação de uma heurística de logging robusta exige a triangulação de fontes de mercado e pesquisas acadêmicas. A fundamentação deste padrão baseia-se nos seguintes pilares:
 
 - **O Princípio dos 5Ws:** Emprestado do jornalismo e da análise de causa raiz (*Root Cause Analysis*), estrutura cada evento de log em dimensões investigativas.
 - **Estudos Empíricos (Microsoft, 2010):** Análise quantitativa e qualitativa de bases de código massivas — de 2,5 a 10,4 milhões de linhas — para identificar padrões reais de onde e como desenvolvedores inserem logs.
 - **Literatura Especializada:** Trabalhos de Anton Chuvakin, autoridade em segurança e gerenciamento de logs, referentes à categorização de eventos operacionais críticos.
+- **Padrões de Microsserviços (Chris Richardson — microservices.io):** Catálogo de padrões de observabilidade para arquiteturas distribuídas, incluindo *Application Logging*, *Distributed Tracing*, *Exception Tracking* e *Audit Logging* — cada um com definição de responsabilidade, fronteiras e casos de uso distintos.
+- **Padrões de Design de Software (Iluwatar — java-design-patterns):** Implementações de referência dos padrões *microservices-log-aggregation* e *microservices-distributed-tracing*, que formalizam o log como fluxo de dados estruturado e tratam a agregação centralizada como componente arquitetural de primeira classe.
+
+**Princípio editorial:** mensagens de log devem usar linguagem direta, neutra e sem ambiguidade. Termos técnicos precisam ser usados com consistência; jargão informal, piadas ou abreviações que possam confundir outras equipes ou ferramentas de análise são proibidos. Logs são lidos em incidentes críticos, frequentemente por pessoas que não escreveram o código — a clareza não é opcional.
 
 ---
 
@@ -30,7 +34,17 @@ A formulação de uma heurística de logging robusta exige a triangulação de f
 
 A ausência de um algoritmo determinístico para o logging exige o estabelecimento de heurísticas. A revisão identifica duas dimensões complementares de análise.
 
-### 3.1. Categorias de Inserção de Log
+### 3.1. O Log como Fluxo de Dados (*Append-Only Stream*)
+
+Antes de definir *o que* registrar, é necessário compreender a natureza estrutural do log. O padrão *microservices-log-aggregation* (Iluwatar) define o log como uma **sequência ordenada de registros do tipo *append-only***: cada evento é acrescentado ao final do fluxo, nunca modificado ou removido retroativamente.
+
+Essa característica tem três implicações diretas para o design do sistema de logging:
+
+- **Fonte da verdade:** em sistemas distribuídos, o fluxo de logs é a representação mais confiável do que realmente aconteceu. Um banco de dados registra o estado *atual*; o log registra cada *mudança de estado* ao longo do tempo. Um log completo permite reconstruir o estado de qualquer entidade em qualquer ponto do passado.
+- **Agregação centralizada obrigatória:** em arquiteturas de microsserviços, cada instância gera seu próprio fluxo. Sem um ponto de agregação centralizado (ex.: ELK Stack, Loki, Datadog), os logs de uma única operação distribuída ficam espalhados em dezenas de arquivos em servidores diferentes, tornando o diagnóstico impraticável.
+- **Imutabilidade como contrato:** alterar ou deletar um registro de log — mesmo para "corrigir" uma mensagem — viola o contrato do padrão e pode comprometer investigações de segurança, disputas técnicas e conformidade regulatória.
+
+### 3.2. Categorias de Inserção de Log
 
 O estudo da Microsoft identificou cinco cenários primários onde desenvolvedores inserem logs no código:
 
@@ -40,7 +54,7 @@ O estudo da Microsoft identificou cinco cenários primários onde desenvolvedore
 4. **Pontos de Execução (*Execution Point Logging*):** Logs observacionais para confirmar que o fluxo entrou em um bloco condicional específico.
 5. **Rastreamento (*Trace Logging*):** Acompanhamento do caminho de execução ao longo de múltiplos componentes.
 
-### 3.2. Eventos Críticos
+### 3.3. Eventos Críticos
 
 Baseando-se em Anton Chuvakin, as seguintes classes de eventos devem **obrigatoriamente** gerar registros, independente da heurística do desenvolvedor:
 
@@ -59,16 +73,35 @@ Todo evento de log deve, obrigatoriamente, responder às seis dimensões do fram
 
 | Dimensão | Pergunta | Exemplos práticos |
 |---|---|---|
-| **Who** (Quem) | Quem é o ator da ação? | `userId`, IP de origem, `visitorToken` |
-| **What** (O quê) | Qual é o evento? | "Pedido criado", "Login falhou" |
-| **When** (Quando) | Quando ocorreu? | Timestamp ISO 8601 em UTC com milissegundos |
-| **Where** (Onde) | Onde no sistema? | Serviço, classe, método, endpoint, `requestId` |
+| **Who** (Quem) | Quem é o ator da ação? | `userId`, IP de origem, `visitorToken`, identidade anônima de sessão |
+| **What** (O quê) | Qual é o evento? | "Pedido criado", "Login falhou", nível de severidade |
+| **When** (Quando) | Quando ocorreu? | Timestamp ISO 8601 em **UTC** com milissegundos |
+| **Where** (Onde) | Onde no sistema? | Serviço, classe, método, endpoint, `requestId`, nome do host, ID do container |
 | **Why** (Por quê) | Qual o motivo de negócio? | "Saldo insuficiente", "Sessão expirada" |
 | **How** (Como) | Por qual canal chegou? | "API REST", "Fila assíncrona", "Job agendado" |
 
-As dimensões *When* (timestamp) e parte do *Where* (classe e método) são automáticas e preenchidas pela infraestrutura de logging. As demais exigem declaração explícita pelo desenvolvedor — e é exatamente aí que a DSL atua, guiando esse preenchimento.
+As dimensões *When* (timestamp) e parte do *Where* (classe, método, host) são automáticas e preenchidas pela infraestrutura de logging. As demais exigem declaração explícita pelo desenvolvedor — e é exatamente aí que a DSL atua, guiando esse preenchimento.
 
 **Observação:** Classe e método são metadados técnicos úteis, mas não substituem rastreabilidade funcional. Um log com apenas `PedidoService.criar` sem o `pedidoId`, o usuário e o motivo não permite diagnóstico eficiente.
+
+### 4.1. Requisitos da Dimensão *When* em Sistemas Distribuídos
+
+Em sistemas de instância única, o timestamp local é suficiente. Em arquiteturas distribuídas — múltiplos serviços, múltiplos servidores — um desvio de poucos segundos entre relógios de máquinas diferentes torna a ordenação cronológica dos eventos impossível, inviabilizando a reconstrução de qualquer sequência de causa e efeito.
+
+**Requisito obrigatório:** todos os servidores que geram logs devem estar sincronizados com o **UTC** via **NTP** (*Network Time Protocol*). Sem sincronização de tempo, logs de serviços diferentes não podem ser intercalados em ordem confiável, mesmo que todos estejam em JSON e usando o mesmo formato de timestamp.
+
+### 4.2. A Dimensão *Where*: `requestId` vs. `traceId`
+
+A dimensão *Where* possui dois identificadores complementares que respondem a perguntas diferentes e devem **ambos estar presentes** em todo evento de log:
+
+| Identificador | Escopo | Gerado por | Pergunta que responde |
+|---|---|---|---|
+| `requestId` | Uma única requisição HTTP em um único serviço | Filtro JAX-RS / servlet filter | "Todos os logs desta requisição neste serviço" |
+| `traceId` | Toda a operação distribuída, através de todos os serviços | OpenTelemetry SDK | "Todos os logs de todos os serviços para esta operação do usuário" |
+
+O `requestId` é útil para isolar o ciclo de vida de uma requisição dentro de um serviço — inclusive para correlacionar logs antes e depois de uma exceção no mesmo processo. O `traceId` é indispensável para cruzar fronteiras de serviço e reconstruir a jornada completa de uma operação em uma arquitetura de microsserviços.
+
+Os dois coexistem e se complementam: o `requestId` é o identificador local; o `traceId` é o identificador global distribuído.
 
 ---
 
@@ -185,6 +218,7 @@ level: ERROR AND log_motivo: "Gateway*" AND @timestamp:[now-1h TO now]
 - Nomes de campos devem ser consistentes em toda a aplicação. Consulte o [Registro de Nomes de Campos](FIELD_NAMES.md).
 - Dados sensíveis não devem ser registrados — mascaramento automático via `SensitiveDataSanitizer`.
 - Serialização JSON deve usar `ObjectMapper` pré-compilado com módulos registrados — não reflexão por evento.
+- O transporte de logs entre nós da rede deve usar **SSL/TLS**, garantindo confidencialidade e autenticidade do fluxo de dados de observabilidade em trânsito.
 
 ---
 
@@ -363,14 +397,27 @@ A escolha do nível de log deve ser determinística, não subjetiva. A regra é 
 
 | Nível | Quando usar | Habilitado em produção? |
 |---|---|---|
+| `TRACE` | Diagnóstico de baixo nível: entradas e saídas de métodos, iterações de loop, valores intermediários detalhados | Nunca — apenas em desenvolvimento local |
+| `DEBUG` | Fluxos internos, decisões condicionais, dados intermediários sem alteração de estado | Não por padrão — ativável dinamicamente por pacote |
 | `INFO` | Operações que alteram estado: persistência, autenticação, chamadas externas, mudanças relevantes | Sempre |
 | `WARN` | Situações anômalas recuperáveis: tentativas de acesso indevido, *fallbacks* ativados, validações rejeitadas | Sempre |
 | `ERROR` | Falhas reais: exceção que impede o cumprimento do contrato da operação | Sempre |
-| `DEBUG` | Fluxos internos, decisões condicionais, dados intermediários sem alteração de estado | Não por padrão — ativável dinamicamente por pacote |
+| `FATAL` | Falhas que tornam a aplicação incapaz de continuar operando — exigem intervenção imediata (ex: corrupção de estado crítico, falha de inicialização irrecuperável) | Sempre |
 
 **Regra anti-duplicação:** é proibido registrar a mesma exceção em múltiplas camadas sem agregar contexto adicional. Cada camada loga apenas o que sabe a mais sobre o erro.
 
 **Regra de exceção completa:** é proibido registrar apenas `e.getMessage()`. O objeto de exceção completo deve sempre ser passado ao logger, preservando classe, *stack trace* e cadeia de causas.
+
+**Códigos de erro únicos:** eventos críticos de negócio e de infraestrutura devem receber códigos únicos e estáveis (ex: `APP-1001`, `PAG-4022`). Esses códigos são a chave de ligação entre o log em produção e a **Base de Conhecimento de Erros Conhecidos (KEDB)** — um repositório interno que documenta causa raiz, impacto e procedimento de remediação para cada código. Quando um operador vê `APP-1001` em um alerta às 3 da manhã, ele consulta a KEDB e executa o procedimento documentado, sem precisar interpretar a mensagem de log do zero.
+
+```json
+{
+  "level":      "ERROR",
+  "error_code": "PAG-4022",
+  "message":    "Falha ao processar pagamento",
+  "log_motivo": "Gateway recusou a transação — código INSUFFICIENT_FUNDS"
+}
+```
 
 ---
 
@@ -386,7 +433,14 @@ O logging deve seguir o princípio de *data minimization*: registrar apenas o qu
 - CPF, RG e dados pessoais sensíveis conforme LGPD
 - Dados que identifiquem menores de idade
 
-Quando um campo de negócio contém dado sensível, a sanitização ocorre automaticamente via `SensitiveDataSanitizer`, que intercepta os valores pelos nomes das chaves — sem depender da disciplina do desenvolvedor no momento da chamada.
+Quando um campo de negócio contém dado sensível, a sanitização ocorre automaticamente via `SensitiveDataSanitizer`, que intercepta os valores pelos nomes das chaves. Dois modos de proteção são aplicados:
+
+- **Mascaramento:** o valor é substituído por uma representação reduzida que confirma presença sem expor o conteúdo — ex: `"****"` para senhas, `"**** **** **** 4242"` para cartões. Preserva a evidência de que o campo foi fornecido.
+- **Redação:** o valor é completamente removido do registro — útil quando nem a confirmação de presença pode ser registrada (ex: dados de menores, informações sob sigilo legal). O campo simplesmente não aparece no JSON.
+
+A escolha entre mascaramento e redação depende do requisito regulatório aplicável. Em caso de dúvida, prefira a redação.
+
+**Proteção em trânsito:** o transporte de logs entre nós da rede deve usar **SSL/TLS**. Um log mascarado na aplicação pode ter seu conteúdo original interceptado em trânsito se o canal não estiver criptografado — a proteção de dados sensíveis deve ser aplicada em todas as camadas do pipeline.
 
 ---
 
@@ -423,32 +477,175 @@ O `traceId` e o `spanId` gerados pelo OpenTelemetry são a chave que une os trê
 
 Por isso, **ambos os identificadores nunca devem ser gerados manualmente** — devem sempre ser extraídos do contexto OTel ativo.
 
-### 12.2. Ambientes Reativos e Virtual Threads
+> ⚠️ **Escopo deste documento:** os pilares de métricas e tracing são mencionados para contextualizar o papel dos logs no ecossistema de observabilidade. A implementação desses pilares é tratada separadamente e está fora do escopo deste padrão de logging.
+
+### 12.2. Correlação por Identificadores: `requestId` e `traceId`
+
+Conforme detalhado na seção 4.2, dois identificadores de correlação devem estar presentes em todo evento de log:
+
+```json
+{
+  "request_id": "a3f9c2d1-7b44-4e2a-9c2d-1a3b9c2d17b4",
+  "trace_id":   "7d2c8e4f1a3b9c2d4bf92f3577b34da6"
+}
+```
+
+O `request_id` é gerado pelo filtro JAX-RS da aplicação e permanece estável durante toda a requisição dentro de um único serviço. O `trace_id` é propagado pelo OpenTelemetry através dos cabeçalhos HTTP (`traceparent` — padrão W3C TraceContext) e é o mesmo em todos os serviços que participam da mesma operação distribuída.
+
+**Ambos são necessários.** Em uma arquitetura de microsserviços, o `trace_id` é o identificador que permite reconstruir a história completa de uma operação — sem ele, logs de serviços diferentes são ilhas de informação desconectadas, mesmo que estejam no mesmo sistema de log aggregation.
+
+### 12.3. Ambientes Reativos e Virtual Threads
 
 Em aplicações com RESTEasy Reactive, Mutiny ou Vert.x, o MDC isolado não é suficiente: a execução pode trocar de *thread* entre operações assíncronas e o `ThreadLocal` é silenciosamente perdido. Nesses ambientes é obrigatório o uso de **SmallRye Context Propagation** (Quarkus) ou equivalente.
 
 Para cenários de alta concorrência, *virtual threads* (Project Loom, Java 21) oferecem propagação de contexto não-bloqueante sem a complexidade de pipelines reativos explícitos — e são a abordagem preferida em novas implementações.
 
-### 12.3. Alteração Dinâmica de Nível
+### 12.4. Alteração Dinâmica de Nível
 
 Aplicações em produção devem permitir a ativação do nível `DEBUG` por pacote específico em tempo de execução, sem reinicialização, para investigar incidentes ativos sem elevar o volume global de logs.
 
-### 12.4. Logs como Base de Alertas e Analytics
+### 12.5. Logs como Base de Alertas e Analytics
+
+Logs estruturados habilitam uso operacional e de negócio além do debugging. A configuração de alertas automáticos sobre eventos de log é uma das formas mais eficientes de detecção proativa de problemas:
 
 - **Analytics em tempo real:** eventos como `ORDER_COMPLETED` alimentam dashboards sem onerar o banco de dados principal.
-- **Alertas automáticos:** pico de `LOGIN_FAILED` do mesmo IP em curto intervalo dispara alerta de força bruta; queda de 80% em `ORDER_CREATED` sinaliza falha silenciosa no frontend.
+- **Alertas automáticos baseados em padrões:** pico de `LOGIN_FAILED` do mesmo IP em curto intervalo dispara alerta de força bruta; queda de 80% em `ORDER_CREATED` sinaliza falha silenciosa no frontend; qualquer log com `error_code: PAG-4022` acima de um limiar dispara notificação no canal de plantão.
+- **Integração com canais de operação:** ferramentas como Fluentd permitem rotear eventos de log específicos diretamente para Slack, PagerDuty ou scripts de remediação automática — transformando o log em gatilho operacional, não apenas arquivo histórico.
 - **Auditoria e prova técnica:** *payload* e resposta de APIs externas criam evidências imutáveis para encerrar disputas técnicas.
-- **Otimização de performance:** duração de operações registrada com Micrometer permite identificar gargalos com dados reais de produção.
+- **Otimização de performance:** duração de operações registrada permite identificar gargalos com dados reais de produção.
 
 ---
 
-## 13. Volume: Excesso vs. Omissão
+## 13. Log de Auditoria
+
+> Padrão de referência: Chris Richardson — [Audit Logging (microservices.io)](https://microservices.io/patterns/observability/audit-logging.html)
+
+### 13.1. Definição e Distinção
+
+Log de auditoria é o registro permanente e consultável de **ações de usuários sobre entidades de negócio**. É um padrão distinto do log de aplicação — os dois são complementares e nenhum substitui o outro.
+
+| Dimensão | Log de Aplicação | Log de Auditoria |
+|---|---|---|
+| **Propósito** | Diagnóstico técnico, resposta a incidentes | Conformidade, responsabilização, resolução de disputas |
+| **Consumidor** | Engenheiros, SRE | Jurídico, segurança, suporte ao cliente, reguladores |
+| **Retenção** | Dias a semanas | Meses a anos (exigências regulatórias) |
+| **Mutabilidade** | *Append-only* | Deve ser imutável e à prova de adulteração |
+| **Granularidade** | Eventos técnicos (erros, latência, fluxo) | Ações de negócio (quem alterou o quê, de qual valor para qual valor) |
+
+A confusão entre os dois tipos leva a um dos seguintes problemas: logs de aplicação sobrecarregados com campos de auditoria que não têm relação com diagnóstico técnico, ou ausência de trilha de auditoria real porque se assumiu que o log de aplicação a cobriria.
+
+### 13.2. Campos Obrigatórios de um Registro de Auditoria
+
+Todo registro de auditoria deve responder às seguintes dimensões:
+
+| Campo | Descrição |
+|---|---|
+| `actor_id` | Quem executou a ação (`userId` ou identidade de sistema) |
+| `actor_ip` | Endereço IP de origem da requisição |
+| `session_id` | Identificador de sessão (vincula ao evento de autenticação) |
+| `action` | Tipo de ação: `CREATE`, `UPDATE`, `DELETE`, `READ` (para dados sensíveis), `LOGIN`, `LOGOUT` |
+| `entity_type` | Tipo da entidade afetada (ex: `UserProfile`, `Order`, `PaymentMethod`) |
+| `entity_id` | Identificador da entidade afetada |
+| `state_before` | Snapshot do estado relevante da entidade **antes** da ação |
+| `state_after` | Snapshot do estado relevante da entidade **depois** da ação |
+| `@timestamp` | Timestamp UTC com precisão de milissegundos |
+| `trace_id` | Correlação com o trace distribuído da requisição |
+| `outcome` | `SUCCESS` ou `FAILURE` (com motivo em caso de falha) |
+
+### 13.3. O Que Deve Ser Auditado
+
+As seguintes ações devem **sempre** gerar um registro de auditoria — independente de já gerarem um log de aplicação:
+
+- Eventos de autenticação: `LOGIN`, `LOGIN_FAILED`, `LOGOUT`, `PASSWORD_CHANGED`
+- Decisões de autorização: `ACCESS_DENIED` em recursos sensíveis
+- Mutações de dados em entidades sensíveis: `CREATE`, `UPDATE`, `DELETE` em Usuário, Pedido, Pagamento, Conta
+- Ações administrativas: alterações de papel, atualizações de configuração, operações em lote
+- Exportações de dados: qualquer ação que faça dados pessoais sair do sistema
+
+### 13.4. Casos de Uso
+
+**Conformidade (LGPD):** demonstrar quais ações foram tomadas sobre dados pessoais, por quem e quando — evidência exigível a qualquer momento por autoridade regulatória.
+
+**Suporte ao cliente:** quando um cliente contesta uma alteração em sua conta, o registro de auditoria fornece a resposta factual: *"Seu endereço de e-mail foi alterado de a@x.com para b@x.com pelo usuário USR-445, via IP 200.x.x.x, em 2026-03-09T14:32:01Z."*
+
+**Investigação de segurança:** se um incidente é suspeito, o log de auditoria responde quais contas foram acessadas, quais dados foram lidos e de quais endereços IP — mesmo que os logs de aplicação já tenham sido rotacionados.
+
+**Resolução de disputas com terceiros:** quando uma API externa (gateway de pagamento, operadora logística) alega que seu serviço enviou dados incorretos, o registro da requisição enviada — com *payload*, timestamp e resposta — é evidência técnica irrefutável.
+
+> ⚠️ **Implementação futura:** a implementação do mecanismo de auditoria automática (interceptor `@Auditable`, `AuditWriter`, pipeline de persistência) está planejada para uma versão futura da biblioteca. Os campos e casos de uso descritos acima definem o contrato que essa implementação deverá satisfazer.
+
+---
+
+## 14. Rastreamento de Exceções
+
+> Padrão de referência: Chris Richardson — [Exception Tracking (microservices.io)](https://microservices.io/patterns/observability/exception-tracking.html)
+
+### 14.1. O Problema da Degradação Silenciosa
+
+Simplesmente registrar uma exceção em log não é suficiente em sistemas de produção com alto volume. O cenário a seguir é comum quando não existe rastreamento centralizado de exceções:
+
+1. Uma alteração de código introduz um bug que lança `NullPointerException` em 3% das requisições.
+2. A exceção é registrada no log — mas é uma linha entre milhares, sem nenhum alerta.
+3. O volume de erros cresce silenciosamente por horas.
+4. Usuários começam a reclamar; a equipe inicia a investigação.
+5. A investigação exige *grep* manual em logs de múltiplas instâncias para identificar padrão.
+
+Com rastreamento centralizado de exceções, a mesma situação seria:
+
+1. A `NullPointerException` é reportada na primeira ocorrência.
+2. A equipe recebe uma notificação: *"Nova exceção: NullPointerException em OrderService.processOrder() — 142 ocorrências nos últimos 5 minutos."*
+3. A investigação começa imediatamente, com link direto para o stack trace agrupado e o contexto da requisição.
+
+### 14.2. Rastreamento de Exceções vs. Agregação de Logs
+
+Os dois padrões são **complementares**, não concorrentes. Uma exceção deve ser simultaneamente:
+
+1. **Registrada** — no fluxo de log estruturado, com o contexto 5W1H completo, para correlação com a linha do tempo da requisição.
+2. **Reportada** — ao serviço de rastreamento centralizado, para de-duplicação, atribuição de responsabilidade e acompanhamento de resolução.
+
+| Preocupação | Agregação de Logs | Rastreamento de Exceções |
+|---|---|---|
+| Armazenamento | Série temporal *append-only* | Agrupado por *fingerprint* |
+| De-duplicação | Nenhuma — cada ocorrência é um registro separado | Exceções idênticas são agrupadas |
+| Notificação | Requer configuração manual de alerta | Automática em novos tipos de exceção |
+| Acompanhamento de resolução | Não | Sim — estados aberto/resolvido/ignorado |
+| Volume coberto | Todos os eventos | Apenas exceções |
+
+### 14.3. Fingerprinting e De-duplicação
+
+Um *fingerprint* é um identificador estável para uma **classe** de exceções — de forma que a 1.000ª ocorrência do mesmo bug seja reconhecida como o mesmo bug, e não como 1.000 problemas distintos.
+
+O *fingerprint* é calculado a partir de:
+- Nome da classe da exceção
+- Os N primeiros *stack frames* do código próprio da aplicação (ignorando frames de frameworks e bibliotecas)
+- Opcionalmente, a mensagem da exceção — apenas quando contém identificadores estáveis, não dados dinâmicos
+
+### 14.4. A Importância de Passar o Objeto de Exceção Completo
+
+Este padrão reforça diretamente a seção 7.2 (Padrões Proibidos): a qualidade do rastreamento de exceções depende inteiramente de receber o objeto de exceção completo, não apenas sua mensagem.
+
+```java
+// PROIBIDO — descarta classe, stack trace e cadeia de causas
+//            inviabiliza fingerprinting e agrupamento
+logger.error(e.getMessage());
+
+// CORRETO — preserva todas as informações necessárias para rastreamento
+logger.error("Order processing failed: Order#{}", orderId, e);
+```
+
+O objeto de exceção contém: `getClass().getName()` (para *fingerprinting* e agrupamento), `getStackTrace()` (para localizar o bug), `getCause()` (para entender causas raiz em exceções encadeadas) e `getMessage()` (para contexto legível). Descartar o objeto descarta tudo isso.
+
+> ⚠️ **Implementação futura:** a implementação do `ExceptionReporter` — CDI bean com integração a backends como Sentry, Rollbar ou webhook customizado — está planejada para uma versão futura da biblioteca. As boas práticas de logging descritas acima (objeto completo, sem log-and-throw) são os pré-requisitos que tornarão essa integração eficaz quando for implementada.
+
+---
+
+## 15. Volume: Excesso vs. Omissão
 
 Em casos de dúvida sobre a relevância de uma informação, a literatura favorece o excesso. Deixar de registrar uma informação crítica é significativamente mais prejudicial do que registrar dados supérfluos. Um log desnecessário pode ser filtrado; um log ausente no momento de um incidente crítico é irrecuperável.
 
 ---
 
-## 14. Performance
+## 16. Performance
 
 A infraestrutura de logging não deve introduzir latência observável no caminho crítico:
 
@@ -459,7 +656,7 @@ A infraestrutura de logging não deve introduzir latência observável no caminh
 
 ---
 
-## 15. Implementação da Biblioteca
+## 17. Implementação da Biblioteca
 
 O código-fonte está documentado em arquivos separados, organizados por plataforma:
 
@@ -472,7 +669,7 @@ Ambas as implementações expõem a mesma API pública (`LogSistematico`, `@Logg
 
 ---
 
-## 16. Exemplos de Uso
+## 18. Exemplos de Uso
 
 ### Caso 1 — Persistência (evento obrigatório)
 
@@ -592,7 +789,7 @@ structuredLogger.businessEvent("ORDER_COMPLETED",
 
 ---
 
-## 17. Não Conformidades
+## 19. Não Conformidades
 
 São consideradas não conformidades graves, a serem bloqueadas em *Code Review*:
 
@@ -612,7 +809,7 @@ São consideradas não conformidades graves, a serem bloqueadas em *Code Review*
 
 ---
 
-## 18. Checklist de Code Review
+## 20. Checklist de Code Review
 
 Antes de aprovar qualquer *pull request* que toque em código de observabilidade:
 
@@ -631,7 +828,7 @@ Antes de aprovar qualquer *pull request* que toque em código de observabilidade
 
 ---
 
-## 19. Ciclo de Melhoria Contínua
+## 21. Ciclo de Melhoria Contínua
 
 Logging é um componente vivo da arquitetura. Após cada incidente em produção:
 
@@ -642,7 +839,7 @@ Logging é um componente vivo da arquitetura. Após cada incidente em produção
 
 ---
 
-## 20. Conclusão
+## 22. Conclusão
 
 O logging sistemático deixa de ser uma prática subjetiva e passa a ser um **componente arquitetural com contratos claros**: o framework 5W1H define o que deve estar presente em cada evento; a DSL e a Fluent Interface tornam o preenchimento correto o caminho natural; o CDI Interceptor elimina o trabalho repetitivo de propagar contexto; e o JSON estruturado transforma cada log em um dado pesquisável.
 
@@ -654,6 +851,17 @@ Logs sistemáticos não são overhead — são a memória do sistema.
 
 ## Ver Também
 
+**Implementações da biblioteca:**
 - [Implementação SLF4J + Log4j2](implementacao_slf4j.md) — código-fonte completo da biblioteca portável
 - [Implementação Quarkus 3.27](biblioteca_quarkus.md) — código-fonte completo da biblioteca nativa Quarkus
 - [Registro de Nomes de Campos](FIELD_NAMES.md) — nomes canônicos dos campos JSON
+
+**Referências bibliográficas:**
+- Anton Chuvakin — *Security Information and Event Management* — categorização de eventos críticos de segurança
+- Microsoft Research (2010) — *Characterizing Logging Practices in Open-Source Software* — estudo empírico sobre padrões de inserção de logs
+- Chris Richardson — [Application Logging (microservices.io)](https://microservices.io/patterns/observability/application-logging.html)
+- Chris Richardson — [Distributed Tracing (microservices.io)](https://microservices.io/patterns/observability/distributed-tracing.html)
+- Chris Richardson — [Exception Tracking (microservices.io)](https://microservices.io/patterns/observability/exception-tracking.html)
+- Chris Richardson — [Audit Logging (microservices.io)](https://microservices.io/patterns/observability/audit-logging.html)
+- Iluwatar — [java-design-patterns: microservices-log-aggregation](https://github.com/iluwatar/java-design-patterns/tree/master/microservices-log-aggregation)
+- Iluwatar — [java-design-patterns: microservices-distributed-tracing](https://github.com/iluwatar/java-design-patterns/tree/master/microservices-distributed-tracing)
