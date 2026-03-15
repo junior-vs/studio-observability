@@ -48,6 +48,28 @@ nb-configuration.xml
 *.swp
 *.swo
 
+# Observability Stack Data
+# Arquivos gerados pelos serviços de observabilidade
+
+# Dados dos volumes Docker
+observability/prometheus/data/
+observability/grafana/data/
+observability/elasticsearch/data/
+observability/graylog/data/
+observability/mongodb/data/
+
+# Logs temporários
+observability/**/*.log
+observability/**/*.log.*
+
+# Dashboards temporários do Grafana
+observability/grafana/provisioning/dashboards/*.json
+
+# Certificados e chaves
+observability/**/*.key
+observability/**/*.crt
+observability/**/*.pem
+
 # patch
 *.orig
 *.rej

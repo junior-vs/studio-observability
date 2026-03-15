@@ -1,0 +1,89 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  # Recebe métricas do Prometheus
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: 'otel-collector'
+          scrape_interval: 10s
+          static_configs:
+            - targets: ['localhost:8888']
+
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+
+  # Adiciona atributos aos spans e métricas
+  resource:
+    attributes:
+      - key: service.name
+        value: lib-full-logging
+        action: upsert
+      - key: deployment.environment
+        value: development
+        action: upsert
+
+  # Filtra dados sensíveis (opcional)
+  attributes:
+    actions:
+      - key: password
+        action: delete
+      - key: token
+        action: delete
+      - key: apikey
+        action: delete
+
+exporters:
+  # Exporta logs para o console (debug)
+  logging:
+    loglevel: info
+
+  # Exporta métricas para o Prometheus
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    namespace: quarkus
+    const_labels:
+      cluster: local-dev
+
+  # Exporta logs para o Elasticsearch
+  elasticsearch:
+    endpoints: ["http://elasticsearch:9200"]
+    logs_index: otel-logs
+    traces_index: otel-traces
+    metrics_index: otel-metrics
+
+  # Exporta para o Graylog via GELF
+  otlp/graylog:
+    endpoint: graylog:12201
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [resource, attributes, batch]
+      exporters: [logging, elasticsearch]
+
+    metrics:
+      receivers: [otlp, prometheus]
+      processors: [resource, batch]
+      exporters: [logging, prometheus, elasticsearch]
+
+    logs:
+      receivers: [otlp]
+      processors: [resource, attributes, batch]
+      exporters: [logging, elasticsearch]
+
+  telemetry:
+    logs:
+      level: "info"
+    metrics:
+      address: 0.0.0.0:8888
