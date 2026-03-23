@@ -1,0 +1,156 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "quarkus-app-overview",
+    "title": "Quarkus Application Overview",
+    "tags": ["quarkus", "application"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 0,
+    "refresh": "10s",
+    "panels": [
+      {
+        "id": 1,
+        "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+        "type": "graph",
+        "title": "HTTP Request Rate",
+        "targets": [
+          {
+            "expr": "rate(http_server_requests_seconds_count{application=\"lib-full-logging\"}[5m])",
+            "legendFormat": "{{uri}} - {{method}}"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "reqps",
+            "label": "Requests/sec"
+          },
+          {
+            "format": "short"
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+        "type": "graph",
+        "title": "HTTP Request Latency (P95)",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket{application=\"lib-full-logging\"}[5m])) by (le, uri))",
+            "legendFormat": "{{uri}}"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "s",
+            "label": "Latency"
+          },
+          {
+            "format": "short"
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+        "type": "graph",
+        "title": "JVM Memory Usage",
+        "targets": [
+          {
+            "expr": "jvm_memory_used_bytes{application=\"lib-full-logging\", area=\"heap\"}",
+            "legendFormat": "Heap Used"
+          },
+          {
+            "expr": "jvm_memory_max_bytes{application=\"lib-full-logging\", area=\"heap\"}",
+            "legendFormat": "Heap Max"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "bytes",
+            "label": "Memory"
+          },
+          {
+            "format": "short"
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+        "type": "graph",
+        "title": "HTTP Error Rate",
+        "targets": [
+          {
+            "expr": "rate(http_server_requests_seconds_count{application=\"lib-full-logging\", status=~\"5..\"}[5m])",
+            "legendFormat": "{{uri}} - {{status}}"
+          }
+        ],
+        "yaxes": [
+          {
+            "format": "reqps",
+            "label": "Errors/sec"
+          },
+          {
+            "format": "short"
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "gridPos": { "x": 0, "y": 16, "w": 6, "h": 4 },
+        "type": "stat",
+        "title": "Total Requests",
+        "targets": [
+          {
+            "expr": "sum(http_server_requests_seconds_count{application=\"lib-full-logging\"})"
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "gridPos": { "x": 6, "y": 16, "w": 6, "h": 4 },
+        "type": "stat",
+        "title": "Active Threads",
+        "targets": [
+          {
+            "expr": "jvm_threads_live{application=\"lib-full-logging\"}"
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "gridPos": { "x": 12, "y": 16, "w": 6, "h": 4 },
+        "type": "stat",
+        "title": "CPU Usage",
+        "targets": [
+          {
+            "expr": "process_cpu_usage{application=\"lib-full-logging\"}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit"
+          }
+        }
+      },
+      {
+        "id": 8,
+        "gridPos": { "x": 18, "y": 16, "w": 6, "h": 4 },
+        "type": "stat",
+        "title": "Uptime",
+        "targets": [
+          {
+            "expr": "process_uptime_seconds{application=\"lib-full-logging\"}"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s"
+          }
+        }
+      }
+    ]
+  }
+}
