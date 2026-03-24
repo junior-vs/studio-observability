@@ -8,7 +8,6 @@ import jakarta.enterprise.context.ApplicationScoped;
 @ApplicationScoped
 public class HelloService {
 
-
     public String sayHello() {
         LogSistematico
                 .registrando("Servico de hello")
@@ -20,10 +19,10 @@ public class HelloService {
         return "Hello World!";
     }
 
-    public Double divide(Double a, Double b) throws Throwable {
-     try {
-         return a / b;
-     }catch (MatchException e){
+    public Double divide(Double a, Double b) throws Exception {
+        try {
+            return a / b;
+        } catch (ArithmeticException e) {
             LogSistematico
                     .registrando("Erro de divisão")
                     .em(HelloService.class, "divide")
@@ -31,15 +30,14 @@ public class HelloService {
                     .como("API REST - POST /divide")
                     .erro(e);
             return 0d;
-        }catch (Exception e){
-
-            throw  LogSistematico
+        } catch (Exception e) {
+            LogSistematico
                     .registrando("Erro inesperado")
                     .em(HelloService.class, "divide")
                     .porque("Erro inesperado durante divisão")
                     .como("API REST - POST /divide")
                     .erroERelanca(e);
+            throw e; // rethrow after logging
         }
-
     }
 }

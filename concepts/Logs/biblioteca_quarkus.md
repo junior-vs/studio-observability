@@ -1445,13 +1445,13 @@ pela DSL. Os dois coexistem e servem audiências diferentes:
 
 | Campo | Descrição |
 |---|---|
-| `actor_id` | Quem executou a ação (`userId` ou identidade de sistema) |
-| `actor_ip` | Endereço IP de origem |
+| `actorId` | Quem executou a ação (`userId` ou identidade de sistema) |
+| `actorIp` | Endereço IP de origem |
 | `action` | Tipo: `CREATE`, `UPDATE`, `DELETE`, `READ` (sensível), `LOGIN`, `LOGOUT` |
-| `entity_type` | Tipo da entidade afetada (`Order`, `UserProfile`, `PaymentMethod`) |
-| `entity_id` | Identificador da entidade |
-| `state_before` | Estado relevante antes da ação |
-| `state_after` | Estado relevante após a ação |
+| `entityType` | Tipo da entidade afetada (`Order`, `UserProfile`, `PaymentMethod`) |
+| `entityId` | Identificador da entidade |
+| `stateBefore` | Estado relevante antes da ação |
+| `stateAfter` | Estado relevante após a ação |
 | `@timestamp` | UTC com precisão de milissegundos |
 | `traceId` | Correlação com o trace distribuído |
 | `outcome` | `SUCCESS` ou `FAILURE` com motivo |

@@ -72,7 +72,7 @@ public final class LogEtapas {
          * <p>
          * Contexto extra em chave-valor.
          * Valores de chaves sensíveis são mascarados automaticamente pelo
-         * {@link br.com.seudominio.log.context.SanitizadorDados}.
+         * {@link br.com.vsjr.labs.log.context.SanitizadorDados}.
          * Pode ser chamado múltiplas vezes — a ordem de inserção é preservada.
          *
          * @param chave nome do campo no JSON de saída
@@ -117,10 +117,9 @@ public final class LogEtapas {
          *
          * @param causa exceção a registrar e relançar
          * @param <T>   tipo da exceção (preserva o tipo checado para o compilador)
-         * @return
          * @throws T sempre — a linha após esta chamada é inalcançável
          */
-        <T extends Throwable> Throwable erroERelanca(T causa) throws T;
+        <T extends Throwable> void erroERelanca(T causa) throws T;
     }
 
 }

@@ -122,7 +122,7 @@ public final class LogSistematico implements LogEtapas.EtapaOnde, LogEtapas.Etap
     }
 
     @Override
-    public <T extends Throwable> Throwable erroERelanca(T causa) throws T {
+    public <T extends Throwable> void erroERelanca(T causa) throws T {
         emitir(Logger.Level.ERROR, causa);
         throw causa;
     }
@@ -140,11 +140,10 @@ public final class LogSistematico implements LogEtapas.EtapaOnde, LogEtapas.Etap
      * diferenciá-los dos campos de infraestrutura no JSON de saída.</p>
      */
     private void emitir(Logger.Level level, Throwable causa) {
-
-    var logger = Logger.getLogger(classeAlvo);
+        var logger = Logger.getLogger(classeAlvo);
         if (!logger.isEnabled(level)) return;
 
-        var nomeClasse = classeAlvo != null ? classeAlvo.getSimpleName() : "ClasseDesconcida";
+        var nomeClasse = classeAlvo.getSimpleName();
 
         // Popula MDC com dimensões estruturais do evento
         MDC.put("log_classe", nomeClasse);

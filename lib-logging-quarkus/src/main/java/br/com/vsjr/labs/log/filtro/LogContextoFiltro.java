@@ -10,9 +10,7 @@ import jakarta.ws.rs.core.SecurityContext;
 import jakarta.ws.rs.ext.Provider;
 import org.jboss.logging.Logger;
 
-import java.io.IOException;
 import java.security.Principal;
-import java.security.Security;
 
 /**
  * Filtro JAX-RS que gerencia o contexto de logging para requisições HTTP.

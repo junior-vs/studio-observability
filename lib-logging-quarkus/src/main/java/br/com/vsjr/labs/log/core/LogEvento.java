@@ -17,7 +17,7 @@ import java.util.Map;
  * </ul>
  *
  * <p>As dimensões <b>Who</b> (userId) e <b>When</b> (timestamp) são preenchidas
- * automaticamente: Who pelo {@link br.com.seudominio.log.filtro.LogContextoFiltro}
+ * automaticamente: Who pelo {@link br.com.vsjr.labs.log.filtro.LogContextoFiltro}
  * via MDC, e When pelo Quarkus no momento da emissão.</p>
  *
  * <p>Exemplo de saída JSON completa:</p>

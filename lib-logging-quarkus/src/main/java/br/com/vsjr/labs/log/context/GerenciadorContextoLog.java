@@ -9,8 +9,6 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.Logger;
 import org.jboss.logging.MDC;
 
-import java.util.LinkedHashMap;
-
 /**
  * Gerencia o ciclo de vida do MDC para cada execução rastreável.
  *
@@ -72,7 +70,7 @@ public class GerenciadorContextoLog {
 
     /**
      * Registra o contexto de classe e método interceptado.
-     * Chamado pelo {@link br.com.seudominio.log.interceptor.LogInterceptor}.
+     * Chamado pelo {@link br.com.vsjr.labs.log.interceptor.LogInterceptor}.
      */
     public void registrarLocalizacao(String classe, String metodo) {
         MDC.put(CAMPO_CLASSE, classe);
