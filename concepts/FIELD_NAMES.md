@@ -1,6 +1,6 @@
 # Registro de Nomes de Campos
 
-> Este documento formaliza as chaves canônicas de saída JSON para todas as implementações da biblioteca de Logging Sistemático. Os nomes de campos são reservados e devem ser usados consistentemente em todos os serviços e nos três módulos da biblioteca. Usar sinônimos (ex: `user_id` em vez de `userId`, ou `service` em vez de `servico`) viola o princípio de consistência e produz resultados divididos em ferramentas de analytics.
+> Este documento formaliza as chaves canônicas de saída JSON para todas as implementações da biblioteca de Logging Sistemático. Os nomes de campos são reservados e devem ser usados consistentemente em todos os serviços e nos três módulos da biblioteca. Usar sinônimos (ex: `usuarioId` em vez de `userId`, ou `service` em vez de `servico`) viola o princípio de consistência e produz resultados divididos em ferramentas de analytics.
 
 ---
 
@@ -8,10 +8,10 @@
 
 O projeto adota as seguintes convenções, alinhadas ao ecossistema nativo do Quarkus e do JBoss Logging:
 
-- **camelCase** para identificadores de correlação e contexto (`userId`, `traceId`, `spanId`) — consistente com a nomenclatura nativa do OpenTelemetry SDK e JBoss Logging.
+- **camelCase** para identificadores de correlação, auditoria e contexto (`userId`, `traceId`, `spanId`, `actorId`, `entityType`) — consistente com a nomenclatura nativa do OpenTelemetry SDK e JBoss Logging.
 - **Prefixo `log_`** para campos declarados explicitamente na DSL (`.em()`, `.porque()`, `.como()`).
 - **Prefixo `detalhe_`** para campos de negócio declarados via `.comDetalhe()` — evita colisão com campos de infraestrutura no índice do Elasticsearch.
-- **snake_case** para campos de auditoria (`actor_id`, `entity_type`, `state_before`) — convenção dos padrões de auditoria (microservices.io, Audit Logging pattern).
+- **camelCase** para campos de auditoria (`actorId`, `entityType`, `stateBefore`) — mantendo consistência com o contrato principal da biblioteca.
 
 A transformação para convenções de plataformas externas (ECS do Elasticsearch, `dd.trace_id` do Datadog) é responsabilidade do coletor de infraestrutura (OTel Collector, Logstash, FluentBit) — não da aplicação.
 
@@ -87,16 +87,16 @@ Campos obrigatórios em registros de `AuditRecord`, gravados via `AuditWriter`. 
 
 | Campo | Tipo | Descrição |
 |---|---|---|
-| `actor_id` | `string` | Identificador de quem executou a ação (`userId` ou identidade de sistema). |
-| `actor_ip` | `string` | Endereço IP de origem da requisição. |
-| `session_id` | `string` | Identificador de sessão — vincula ao evento de autenticação correspondente. |
+| `actorId` | `string` | Identificador de quem executou a ação (`userId` ou identidade de sistema). |
+| `actorIp` | `string` | Endereço IP de origem da requisição. |
+| `sessionId` | `string` | Identificador de sessão — vincula ao evento de autenticação correspondente. |
 | `action` | `string` | Tipo de operação: `CREATE`, `UPDATE`, `DELETE`, `READ` (dados sensíveis), `LOGIN`, `LOGOUT`. |
-| `entity_type` | `string` | Tipo da entidade afetada. Ex: `"UserProfile"`, `"Order"`, `"PaymentMethod"`. |
-| `entity_id` | `string` | Identificador da entidade afetada. |
-| `state_before` | `object` | Snapshot do estado relevante da entidade **antes** da ação. |
-| `state_after` | `object` | Snapshot do estado relevante da entidade **depois** da ação. |
+| `entityType` | `string` | Tipo da entidade afetada. Ex: `"UserProfile"`, `"Order"`, `"PaymentMethod"`. |
+| `entityId` | `string` | Identificador da entidade afetada. |
+| `stateBefore` | `object` | Snapshot do estado relevante da entidade **antes** da ação. |
+| `stateAfter` | `object` | Snapshot do estado relevante da entidade **depois** da ação. |
 | `outcome` | `string` | Resultado da operação: `"SUCCESS"` ou `"FAILURE"` com motivo em caso de falha. |
-| `trace_id` | `string` | Correlação com o trace distribuído da requisição. |
+| `traceId` | `string` | Correlação com o trace distribuído da requisição. |
 
 ---
 
@@ -132,7 +132,7 @@ Exemplo de saída JSON para um evento `INFO` completo com todos os campos preenc
 
 ### Padronização forçada em snake_case universal
 
-A orientação de usar exclusivamente snake_case para todos os campos (ex: `user_id`, `trace_id`) não se aplica a esta biblioteca. O projeto adota camelCase para identificadores OTel e de contexto (`userId`, `traceId`) por consistência com o ecossistema nativo JBoss Logging e OpenTelemetry SDK Java. A escolha é deliberada e documentada — não uma inconsistência.
+A orientação de usar exclusivamente snake_case para todos os campos não se aplica a esta biblioteca. O projeto adota camelCase para identificadores OTel, auditoria e contexto (`userId`, `traceId`, `actorId`) por consistência com o ecossistema nativo JBoss Logging e OpenTelemetry SDK Java. A escolha é deliberada e documentada — não uma inconsistência.
 
 ### Adaptação dinâmica de campos para plataformas externas
 

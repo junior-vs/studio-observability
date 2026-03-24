@@ -131,7 +131,7 @@ LogSistematico
     .como("API REST — POST /pedidos")
     .comDetalhe("orderId", orderId)
     .comDetalhe("userId",  userId)
-    .info(log);
+    .info();
 ```
 
 Os nomes dos métodos são deliberadamente em português e no vocabulário do domínio operacional — `registrando`, `porque`, `como`, `comDetalhe` — em vez de termos técnicos genéricos como `set`, `add` ou `with`. Isso reduz a fricção cognitiva e torna o log legível como uma sentença.
@@ -147,7 +147,7 @@ LogSistematico
     [ .porque(motivo)    ]    ← Opcional
     [ .como(canal)       ]    ← Opcional
     [ .comDetalhe(k, v)  ]*   ← Zero ou mais
-    .info(log) | .debug(log) | .warn(log) | .erro(log, ex)
+    .info() | .debug() | .warn() | .erro(ex)
 ```
 
 Essa progressão guiada elimina a principal causa de logs incompletos: o desenvolvedor simplesmente não sabe o que deveria preencher. A Fluent Interface torna o preenchimento correto o caminho de menor resistência.
@@ -160,7 +160,7 @@ Esse mecanismo resolve a dimensão *Who* do 5W1H automaticamente: o `userId`, o 
 
 ### 5.4. Imutabilidade dos Objetos de Valor
 
-Todos os objetos de valor da biblioteca — `LogEvento`, `AuditRecord`, `ObservabilityContext` — são *Records* Java 21 imutáveis. Imutabilidade garante *thread-safety* estrutural sem sincronização e elimina erros de estado compartilhado em ambientes concorrentes. Nenhum estado mutável deve ser adicionado a esses objetos.
+Todos os objetos de valor da biblioteca — `LogEvento`, `AuditRecord`, `LogContexto` — são *Records* Java 21 imutáveis. Imutabilidade garante *thread-safety* estrutural sem sincronização e elimina erros de estado compartilhado em ambientes concorrentes. Nenhum estado mutável deve ser adicionado a esses objetos.
 
 ```java
 // Definido pela biblioteca — não adicionar estado mutável
@@ -216,7 +216,7 @@ level: ERROR AND log_motivo: "Gateway*" AND @timestamp:[now-1h TO now]
 - É proibido montar pseudo-JSON via `String.format` ou concatenação.
 - É proibido usar `System.out.println` ou `System.err.println`.
 - Nomes de campos devem ser consistentes em toda a aplicação. Consulte o [Registro de Nomes de Campos](FIELD_NAMES.md).
-- Dados sensíveis não devem ser registrados — mascaramento automático via `SensitiveDataSanitizer`.
+- Dados sensíveis não devem ser registrados — mascaramento automático via `SanitizadorDados`.
 - Serialização JSON deve usar `ObjectMapper` pré-compilado com módulos registrados — não reflexão por evento.
 - O transporte de logs entre nós da rede deve usar **SSL/TLS**, garantindo confidencialidade e autenticidade do fluxo de dados de observabilidade em trânsito.
 
@@ -237,8 +237,8 @@ log.info(String.format("{\"order_id\":\"%s\"}", orderId));
 
 // CORRETO — campos estruturados via key-value nativo (SLF4J 2.x)
 logger.atInfo()
-    .addKeyValue("order_id", orderId)
-    .addKeyValue("user_id",  userId)
+    .addKeyValue("orderId", orderId)
+    .addKeyValue("userId",  userId)
     .log("Order saved");
 ```
 
@@ -308,7 +308,7 @@ MDC.put("traceId", traceId);
 // CORRETO — traceId real extraído do span OpenTelemetry ativo
 String traceId = TraceContextExtractor.currentTraceId();
 if (traceId != null) {
-    MDC.put("trace_id", traceId);
+    MDC.put("traceId", traceId);
 }
 ```
 
@@ -316,11 +316,11 @@ if (traceId != null) {
 
 ```java
 // PROIBIDO — contexto vaza para requisições subsequentes na mesma thread
-MDC.put("user_id", userId);
+MDC.put("userId", userId);
 processRequest();
 
 // CORRETO — limpeza garantida independente de exceção
-MDC.put("user_id", userId);
+MDC.put("userId", userId);
 try {
     processRequest();
 } finally {
@@ -349,18 +349,18 @@ if (log.isDebugEnabled()) {
 ```java
 logger.atInfo()
     .addKeyValue("action",   "processarPedido")
-    .addKeyValue("order_id", orderId)
-    .addKeyValue("user_id",  userId)
+    .addKeyValue("orderId", orderId)
+    .addKeyValue("userId",  userId)
     .log("Order processing started");
 ```
 
 Ou via MDC para contexto que se aplica a todas as linhas de log em um escopo:
 
 ```java
-MDC.put("order_id", orderId.toString());
+MDC.put("orderId", orderId.toString());
 log.info("Processing started");
-// ... múltiplos logs carregam order_id automaticamente
-MDC.remove("order_id");
+// ... múltiplos logs carregam orderId automaticamente
+MDC.remove("orderId");
 ```
 
 ### 8.2. Tratamento de Exceções com Contexto Completo
@@ -370,23 +370,25 @@ try {
     orderService.process(order);
 } catch (Exception e) {
     log.error("Order processing failed: Order#{}", order.getId(), e);
-    exceptionReporter.report(e, Map.of("order_id", order.getId()));
+    exceptionReporter.report(e, Map.of("orderId", order.getId()));
     throw new ServiceException("Order processing failed", e);
 }
 ```
 
 ### 8.3. Eventos de Negócio
 
-Eventos relevantes para o negócio devem ser registrados com o método dedicado — não com `log.info()` genérico — para serem identificáveis como categoria distinta nos sistemas de observabilidade:
+Eventos relevantes para o negócio devem ser registrados com a DSL dedicada — não com `log.info()` genérico — para serem identificáveis como categoria distinta nos sistemas de observabilidade:
 
 ```java
-structuredLogger.businessEvent("ORDER_COMPLETED",
-    Map.of(
-        "order_id",    order.getId(),
-        "order_value", order.getTotal(),
-        "currency",    "BRL",
-        "items_count", order.getItems().size()
-    ));
+LogSistematico
+    .registrando("Pedido concluído")
+    .em(PedidoService.class, "concluir")
+    .comDetalhe("eventType", "ORDER_COMPLETED")
+    .comDetalhe("orderId", order.getId())
+    .comDetalhe("orderValue", order.getTotal())
+    .comDetalhe("currency", "BRL")
+    .comDetalhe("itemsCount", order.getItems().size())
+    .info();
 ```
 
 ---
@@ -413,7 +415,7 @@ A escolha do nível de log deve ser determinística, não subjetiva. A regra é 
 ```json
 {
   "level":      "ERROR",
-  "error_code": "PAG-4022",
+    "errorCode": "PAG-4022",
   "message":    "Falha ao processar pagamento",
   "log_motivo": "Gateway recusou a transação — código INSUFFICIENT_FUNDS"
 }
@@ -433,7 +435,7 @@ O logging deve seguir o princípio de *data minimization*: registrar apenas o qu
 - CPF, RG e dados pessoais sensíveis conforme LGPD
 - Dados que identifiquem menores de idade
 
-Quando um campo de negócio contém dado sensível, a sanitização ocorre automaticamente via `SensitiveDataSanitizer`, que intercepta os valores pelos nomes das chaves. Dois modos de proteção são aplicados:
+Quando um campo de negócio contém dado sensível, a sanitização ocorre automaticamente via `SanitizadorDados`, que intercepta os valores pelos nomes das chaves. Dois modos de proteção são aplicados:
 
 - **Mascaramento:** o valor é substituído por uma representação reduzida que confirma presença sem expor o conteúdo — ex: `"****"` para senhas, `"**** **** **** 4242"` para cartões. Preserva a evidência de que o campo foi fornecido.
 - **Redação:** o valor é completamente removido do registro — útil quando nem a confirmação de presença pode ser registrada (ex: dados de menores, informações sob sigilo legal). O campo simplesmente não aparece no JSON.
@@ -485,14 +487,14 @@ Conforme detalhado na seção 4.2, dois identificadores de correlação devem es
 
 ```json
 {
-  "request_id": "a3f9c2d1-7b44-4e2a-9c2d-1a3b9c2d17b4",
-  "trace_id":   "7d2c8e4f1a3b9c2d4bf92f3577b34da6"
+    "requestId": "a3f9c2d1-7b44-4e2a-9c2d-1a3b9c2d17b4",
+    "traceId":   "7d2c8e4f1a3b9c2d4bf92f3577b34da6"
 }
 ```
 
-O `request_id` é gerado pelo filtro JAX-RS da aplicação e permanece estável durante toda a requisição dentro de um único serviço. O `trace_id` é propagado pelo OpenTelemetry através dos cabeçalhos HTTP (`traceparent` — padrão W3C TraceContext) e é o mesmo em todos os serviços que participam da mesma operação distribuída.
+O `requestId` é gerado pelo filtro JAX-RS da aplicação e permanece estável durante toda a requisição dentro de um único serviço. O `traceId` é propagado pelo OpenTelemetry através dos cabeçalhos HTTP (`traceparent` — padrão W3C TraceContext) e é o mesmo em todos os serviços que participam da mesma operação distribuída.
 
-**Ambos são necessários.** Em uma arquitetura de microsserviços, o `trace_id` é o identificador que permite reconstruir a história completa de uma operação — sem ele, logs de serviços diferentes são ilhas de informação desconectadas, mesmo que estejam no mesmo sistema de log aggregation.
+**Ambos são necessários.** Em uma arquitetura de microsserviços, o `traceId` é o identificador que permite reconstruir a história completa de uma operação — sem ele, logs de serviços diferentes são ilhas de informação desconectadas, mesmo que estejam no mesmo sistema de log aggregation.
 
 ### 12.3. Ambientes Reativos e Virtual Threads
 
@@ -540,16 +542,16 @@ Todo registro de auditoria deve responder às seguintes dimensões:
 
 | Campo | Descrição |
 |---|---|
-| `actor_id` | Quem executou a ação (`userId` ou identidade de sistema) |
-| `actor_ip` | Endereço IP de origem da requisição |
-| `session_id` | Identificador de sessão (vincula ao evento de autenticação) |
+| `actorId` | Quem executou a ação (`userId` ou identidade de sistema) |
+| `actorIp` | Endereço IP de origem da requisição |
+| `sessionId` | Identificador de sessão (vincula ao evento de autenticação) |
 | `action` | Tipo de ação: `CREATE`, `UPDATE`, `DELETE`, `READ` (para dados sensíveis), `LOGIN`, `LOGOUT` |
-| `entity_type` | Tipo da entidade afetada (ex: `UserProfile`, `Order`, `PaymentMethod`) |
-| `entity_id` | Identificador da entidade afetada |
-| `state_before` | Snapshot do estado relevante da entidade **antes** da ação |
-| `state_after` | Snapshot do estado relevante da entidade **depois** da ação |
+| `entityType` | Tipo da entidade afetada (ex: `UserProfile`, `Order`, `PaymentMethod`) |
+| `entityId` | Identificador da entidade afetada |
+| `stateBefore` | Snapshot do estado relevante da entidade **antes** da ação |
+| `stateAfter` | Snapshot do estado relevante da entidade **depois** da ação |
 | `@timestamp` | Timestamp UTC com precisão de milissegundos |
-| `trace_id` | Correlação com o trace distribuído da requisição |
+| `traceId` | Correlação com o trace distribuído da requisição |
 | `outcome` | `SUCCESS` ou `FAILURE` (com motivo em caso de falha) |
 
 ### 13.3. O Que Deve Ser Auditado
@@ -691,7 +693,7 @@ public class PedidoService {
             .como("API REST — POST /pedidos")
             .comDetalhe("pedidoId",   pedido.getId())
             .comDetalhe("valorTotal", pedido.getValorTotal())
-            .info(log);
+            .info();
 
         return pedido;
     }
@@ -728,7 +730,7 @@ public List<Pedido> buscarPorCliente(Long clienteId) {
             .registrando("Busca por cliente ignorada")
             .em(PedidoService.class, "buscarPorCliente")
             .porque("clienteId ausente na requisição")
-            .debug(log);
+            .debug();
 
         return Collections.emptyList();
     }
@@ -751,7 +753,7 @@ public void processar(Long pedidoId) {
             .porque("Gateway recusou a transação")
             .comDetalhe("pedidoId",          pedidoId)
             .comDetalhe("codigoErroGateway", e.getCodigo())
-            .erro(log, e);
+            .erro(e);
 
         throw new PagamentoException("Pagamento não processado", e);
     }
@@ -770,7 +772,7 @@ LogSistematico
     .comDetalhe("email",    request.email())    // ← "[PROTEGIDO]"
     .comDetalhe("password", request.senha())    // ← "****"
     .comDetalhe("ipOrigem", request.ip())
-    .warn(log);
+    .warn();
 ```
 
 ---
@@ -778,13 +780,15 @@ LogSistematico
 ### Caso 5 — Evento de negócio
 
 ```java
-structuredLogger.businessEvent("ORDER_COMPLETED",
-    Map.of(
-        "order_id",    pedido.getId(),
-        "order_value", pedido.getValorTotal(),
-        "currency",    "BRL",
-        "items_count", pedido.getItens().size()
-    ));
+LogSistematico
+    .registrando("Pedido concluído")
+    .em(PedidoService.class, "concluir")
+    .comDetalhe("eventType", "ORDER_COMPLETED")
+    .comDetalhe("orderId", pedido.getId())
+    .comDetalhe("orderValue", pedido.getValorTotal())
+    .comDetalhe("currency", "BRL")
+    .comDetalhe("itemsCount", pedido.getItens().size())
+    .info();
 ```
 
 ---
@@ -823,7 +827,7 @@ Antes de aprovar qualquer *pull request* que toque em código de observabilidade
 - [ ] MDC limpo no bloco `finally`
 - [ ] Computações custosas protegidas por guarda de nível
 - [ ] Nomes de campos canônicos do [Registro de Nomes de Campos](FIELD_NAMES.md) usados
-- [ ] Eventos de negócio usam `structuredLogger.businessEvent()` — não `log.info()` genérico
+- [ ] Eventos de negócio usam `LogSistematico` com `eventType` — não `log.info()` genérico
 - [ ] Falhas de backend de observabilidade tratadas localmente — não relançadas
 
 ---

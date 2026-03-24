@@ -1,7 +1,7 @@
 # Implementação da Biblioteca — SLF4J + Log4j2 + CDI
 
 > Documento de referência de implementação. Para os fundamentos, decisões de design e padrões de uso,
-> consulte o documento principal: [Padrão de Logging em Aplicações Java](logging_revisado.md).
+> consulte o documento principal: [Padrão de Logging em Aplicações Java](Padrão de Logging em Aplicações Java.md).
 >
 > Para a implementação nativa Quarkus, consulte: [Implementação Quarkus 3.27](biblioteca_quarkus.md).
 
@@ -191,7 +191,7 @@ ao canal entre a aplicação e o coletor, e entre o coletor e o backend (ELK, Lo
 O sanitizador é aplicado automaticamente pela DSL em todo valor antes de seu registro.
 A verificação é feita pelo nome da chave, permitindo extensão sem alteração da classe central.
 
-Conforme o princípio de *data minimization* (seção 10 de [logging_revisado.md](logging_revisado.md)),
+Conforme o princípio de *data minimization* (seção 10 de [Padrão de Logging em Aplicações Java.md](Padrão de Logging em Aplicações Java.md)),
 dados sensíveis nunca devem aparecer em logs. O sanitizador é a última linha de defesa
 quando o desenvolvedor passa um campo sensível inadvertidamente via `.comDetalhe()`.
 
@@ -442,7 +442,7 @@ public class GerenciadorContextoLog {
 `record` imutável que transporta o evento do builder da DSL até o emissor.
 Imutabilidade garante *thread-safety* sem necessidade de sincronização —
 conforme o princípio de Imutabilidade dos Objetos de Valor (seção 5.4 de
-[logging_revisado.md](logging_revisado.md)).
+[Padrão de Logging em Aplicações Java.md](Padrão de Logging em Aplicações Java.md)).
 
 ```java
 package br.com.vsjr.labs.logging.core;
@@ -898,7 +898,7 @@ esses campos a cada requisição. Em jobs sem contexto HTTP, o interceptor é o 
 responsável pelo ciclo completo — o que é correto, pois não há requisição a correlacionar.
 
 Falhas de infraestrutura de observabilidade (`MeterRegistry` indisponível) devem ser tratadas
-localmente e nunca relançadas — conforme a seção 11 de [logging_revisado.md](logging_revisado.md).
+localmente e nunca relançadas — conforme a seção 11 de [Padrão de Logging em Aplicações Java.md](Padrão de Logging em Aplicações Java.md).
 
 ```java
 package br.com.vsjr.labs.logging.interceptor;
@@ -1061,7 +1061,7 @@ ignorado em silêncio.
 
 ## 12. Filtro HTTP — Contexto de Requisição
 
-> Padrão de referência: `requestId` vs. `traceId` — seção 4.2 de [logging_revisado.md](logging_revisado.md)
+> Padrão de referência: `requestId` vs. `traceId` — seção 4.2 de [Padrão de Logging em Aplicações Java.md](Padrão de Logging em Aplicações Java.md)
 
 Em ambientes HTTP, o `GerenciadorContextoLog` deve ser inicializado uma única vez por
 requisição — no início do processamento, antes de qualquer código de negócio — e limpo
@@ -1245,7 +1245,7 @@ public Pedido buscarOuFalhar(Long pedidoId) {
 ## Ver Também
 
 **Documentos do projeto:**
-- [Padrão de Logging em Aplicações Java](logging_revisado.md) — fundamentos, 5W1H, padrões de uso
+- [Padrão de Logging em Aplicações Java](Padrão de Logging em Aplicações Java.md) — fundamentos, 5W1H, padrões de uso
 - [Implementação Quarkus 3.27](biblioteca_quarkus.md) — biblioteca nativa Quarkus sem `beans.xml`
 - [Registro de Nomes de Campos](FIELD_NAMES.md) — nomes canônicos dos campos JSON
 

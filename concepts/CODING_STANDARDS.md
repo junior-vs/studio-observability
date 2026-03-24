@@ -249,7 +249,7 @@ LogSistematico
 
 ## 5. Eventos de Negócio
 
-Eventos relevantes para o negócio devem ser registrados com tipo identificável (`event_type`) para serem distinguíveis de eventos técnicos nas ferramentas de observabilidade. Isso habilita dashboards de analytics em tempo real e alertas baseados em volume de eventos específicos.
+Eventos relevantes para o negócio devem ser registrados com tipo identificável (`eventType`) para serem distinguíveis de eventos técnicos nas ferramentas de observabilidade. Isso habilita dashboards de analytics em tempo real e alertas baseados em volume de eventos específicos.
 
 ```java
 // Evento de negócio com tipo identificável
@@ -265,7 +265,7 @@ LogSistematico
     .info();
 ```
 
-O campo `event_type` como detalhe (prefixado `detalhe_eventType` no JSON) é a forma atual de distinguir eventos de negócio. Uma API dedicada `businessEvent()` está planejada para versão futura e manterá o mesmo contrato de campos.
+O campo `eventType` como detalhe (prefixado `detalhe_eventType` no JSON) é a forma atual de distinguir eventos de negócio. Uma API dedicada `businessEvent()` está planejada para versão futura e manterá o mesmo contrato de campos.
 
 ---
 

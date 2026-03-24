@@ -29,7 +29,7 @@ O projeto de observabilidade moderna utiliza a extensão `quarkus-opentelemetry`
 
 Com a dependência instalada, o Quarkus:
 - Cria o *Root Span* nos endpoints HTTP de entrada (Controllers / JAX-RS).
-- Propaga a especificação de cabeçalho **W3C TraceContext** (`traceparent: 00-[trace_id]-[parent_span_id]-01`) nas chamadas do REST Client para outros serviços.
+- Propaga a especificação de cabeçalho **W3C TraceContext** (`traceparent: 00-[traceId]-[parentSpanId]-01`) nas chamadas do REST Client para outros serviços.
 - Injeta automaticamente o `traceId` e `spanId` nativos no MDC para que o provedor JSON do JBoss Logging empacote na saída do Console (`logging-quarkus`).
 
 ### A Arquitetura do `logging-quarkus` (LogSistematico)
@@ -99,5 +99,5 @@ As versões anteriores detalhavam componentes da suíte `observa4j` encarregados
 ### 2. Estratégias Complexas de Amostragem (*Sampling Head/Tail-based*)
 Foi redigido historicamente que a aplicação gerenciava suas taxas de coleta (*Head-Based*) ou definia quais serviços logariam por erro ou vazão (*Tail-Based* bufferizado). No modelo de abstração presente, a SDK se define agnóstica a taxas, enviando 100% de Spans (via propriedade `quarkus.otel.traces.sampler=always_on`). Tais negociações, filtros dinâmicos e políticas de decaimento percentual residem 100% nas configurações de YAML dos contêineres do `OTel Collector` no cluster.
 
-### 3. Nomes de Chaves Forçadas (`trace_id`, `span_id`)
+### 3. Nomes de Chaves Forçadas (`traceId`, `spanId`)
 A taxonomia arcaica, herdada da tentativa de aderir à notação flat via customização forte, deu lugar à integridade nativa. Se a biblioteca JBoss Logging adere por padrão aos campos `traceId` e `spanId` associados ao OTel extensor, o projeto aceita a premissa de `camelCase` e foca em sanidade ao invés de manipulação bruta de strings no JSON final de saída stdout.

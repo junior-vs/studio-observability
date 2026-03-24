@@ -1,7 +1,7 @@
 # Biblioteca de Logging Sistemático — Quarkus 3.27 + Java 21
 
 > **Documentos relacionados**
-> - [Padrão de Logging em Aplicações Java](logging_revisado.md) — fundamentos, 5W1H, padrões proibidos e obrigatórios
+> - [Padrão de Logging em Aplicações Java](Padrão de Logging em Aplicações Java.md) — fundamentos, 5W1H, padrões proibidos e obrigatórios
 > - [Implementação SLF4J + Log4j2](implementacao_slf4j.md) — biblioteca portável para containers Jakarta EE
 
 Esta seção documenta a implementação da biblioteca de logging para aplicações Quarkus 3.27.
@@ -1453,7 +1453,7 @@ pela DSL. Os dois coexistem e servem audiências diferentes:
 | `state_before` | Estado relevante antes da ação |
 | `state_after` | Estado relevante após a ação |
 | `@timestamp` | UTC com precisão de milissegundos |
-| `trace_id` | Correlação com o trace distribuído |
+| `traceId` | Correlação com o trace distribuído |
 | `outcome` | `SUCCESS` ou `FAILURE` com motivo |
 
 **O que deve sempre gerar um registro de auditoria** (independente de já gerar log de aplicação):
@@ -1498,7 +1498,7 @@ entender a raiz). Esse é o motivo da regra absoluta da seção 8 abaixo.
 
 Os padrões abaixo são estritamente proibidos e devem ser bloqueados em *Code Review*.
 A lista completa de padrões proibidos, com exemplos de código, está na seção 7 de
-[logging_revisado.md](logging_revisado.md).
+[Padrão de Logging em Aplicações Java.md](Padrão de Logging em Aplicações Java.md).
 
 | Não conformidade | Impacto |
 |---|---|
@@ -1535,7 +1535,7 @@ A lista completa de padrões proibidos, com exemplos de código, está na seçã
 - [ ] Computações custosas protegidas por guarda de nível
 - [ ] Nomes de campos canônicos do [Registro de Nomes de Campos](FIELD_NAMES.md) usados
 - [ ] Eventos críticos incluem `errorCode` para correlação com KEDB
-- [ ] Eventos de negócio usam campo `event_type` identificável — não `log.info()` genérico
+- [ ] Eventos de negócio usam campo `eventType` identificável — não `log.info()` genérico
 - [ ] Falhas de backend de observabilidade tratadas localmente — não relançadas
 - [ ] `quarkus-smallrye-context-propagation` presente em aplicações com pipelines Mutiny
 
@@ -1544,7 +1544,7 @@ A lista completa de padrões proibidos, com exemplos de código, está na seçã
 ## Ver Também
 
 **Documentos do projeto:**
-- [Padrão de Logging em Aplicações Java](logging_revisado.md) — fundamentos, 5W1H, padrões proibidos e obrigatórios
+- [Padrão de Logging em Aplicações Java](Padrão de Logging em Aplicações Java.md) — fundamentos, 5W1H, padrões proibidos e obrigatórios
 - [Implementação SLF4J + Log4j2](implementacao_slf4j.md) — biblioteca portável para containers Jakarta EE
 - [Registro de Nomes de Campos](FIELD_NAMES.md) — nomes canônicos dos campos JSON
 

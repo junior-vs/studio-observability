@@ -207,10 +207,10 @@ O payload e a resposta de uma chamada a um gateway externo, registrados como eve
 
 Documentos anteriores incluíam `hostname` e `pid` como campos obrigatórios da dimensão *Who*. Em arquiteturas container-native (Kubernetes, Docker), o `hostname` é o nome do pod — um identificador efêmero que muda a cada restart e não tem valor diagnóstico estável. O `servico` (nome da aplicação) é o identificador de identidade relevante; a infra-estrutura de orquestração gerencia o mapeamento pod-serviço.
 
-### `@RequestScoped ObservabilityContext` como portador do *Who* e *Where*
+### Bean `@RequestScoped` dedicado para contexto
 
-Documentação anterior sugeria injetar um bean `@RequestScoped` chamado `ObservabilityContext` para carregar as dimensões *Who* e *Where*. O projeto usa `GerenciadorContextoLog` (`@ApplicationScoped`) + MDC como mecanismo de propagação. O MDC é o padrão do ecossistema SLF4J/JBoss Logging para propagação thread-local de contexto de diagnóstico — criar um bean de escopo de requisição paralelo seria redundante e criaria dois mecanismos de propagação para a mesma informação.
+Documentação anterior sugeria injetar um bean `@RequestScoped` dedicado para carregar as dimensões *Who* e *Where*. O projeto usa `GerenciadorContextoLog` (`@ApplicationScoped`) + MDC como mecanismo de propagação. O MDC é o padrão do ecossistema SLF4J/JBoss Logging para propagação thread-local de contexto de diagnóstico — criar um bean de escopo de requisição paralelo seria redundante e criaria dois mecanismos de propagação para a mesma informação.
 
-### Campos fixos obrigatórios para jobs por `queue_name` ou `worker_class`
+### Campos fixos obrigatórios para jobs por `queueName` ou `workerClass`
 
-Documentação anterior forçava campos como `queue_name` e `worker_class` como obrigatórios no JSON de jobs assíncronos. O projeto não pré-define campos específicos para tipos de executor. O contexto de jobs é declarado via `.como("canal")` e `.comDetalhe()` da DSL, sem acoplar o core da biblioteca a metadados de schedulers específicos.
+Documentação anterior forçava campos como `queueName` e `workerClass` como obrigatórios no JSON de jobs assíncronos. O projeto não pré-define campos específicos para tipos de executor. O contexto de jobs é declarado via `.como("canal")` e `.comDetalhe()` da DSL, sem acoplar o core da biblioteca a metadados de schedulers específicos.

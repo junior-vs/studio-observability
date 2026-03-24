@@ -29,6 +29,7 @@
    - [Evolução Esperada](#81-evolução-esperada)
    - [Extensões Possíveis](#82-extensões-e-integrações-possíveis)
    - [Roadmap Inicial](#83-roadmap-inicial)
+   - [Backlog Conceitual (TODO)](#84-backlog-conceitual-todo)
 9. [Questões em Aberto](#9-questões-em-aberto)
 10. [Referências](#10-referências)
 
@@ -92,7 +93,7 @@ Aplicações modernas baseadas em microsserviços enfrentam um desafio fundament
 - **Tracing distribuído via OpenTelemetry.** Integrar `traceId` e `spanId` reais do span OTel ativo em todos os eventos de log — nunca gerá-los manualmente.
 - **Mascaramento automático de dados sensíveis.** Proteger credenciais e dados pessoais (LGPD) automaticamente pelo nome da chave, sem depender da disciplina manual do desenvolvedor.
 - **Rastreamento de exceções.** Fornecer infra-estrutura para reportar exceções a backends centralizados (Sentry, Rollbar) com de-duplicação por fingerprint.
-- **Eventos de negócio como cidadãos de primeira classe.** Suportar eventos como `ORDER_COMPLETED` e `CHECKOUT_STARTED` com tipo identificável (`event_type`), separado dos eventos técnicos, alimentando dashboards de negócio sem pipeline adicional.
+- **Eventos de negócio como cidadãos de primeira classe.** Suportar eventos como `ORDER_COMPLETED` e `CHECKOUT_STARTED` com tipo identificável (`eventType`), separado dos eventos técnicos, alimentando dashboards de negócio sem pipeline adicional.
 
 ### 3.2 Benefícios Esperados
 
@@ -123,16 +124,16 @@ Uma descrição completa de cada capacidade está no documento de padrão. A tab
 
 | Capacidade | Documento | Fase |
 |---|---|---|
-| Logging estruturado — framework 5W1H | [logging_revisado.md](logging_revisado.md) | v0.1 |
-| DSL + Fluent Interface (`LogSistematico`) | [implementacao_slf4j.md](implementacao_slf4j.md) / [biblioteca_quarkus.md](biblioteca_quarkus.md) | v0.1 |
-| Interceptor CDI automático (`@Logged`) | [implementacao_slf4j.md](implementacao_slf4j.md) / [biblioteca_quarkus.md](biblioteca_quarkus.md) | v0.1 |
-| Mascaramento automático de dados sensíveis (`SanitizadorDados`) | [logging_revisado.md § 10](logging_revisado.md) | v0.1 |
-| Integração OpenTelemetry (`traceId` / `spanId`) | [biblioteca_quarkus.md § 5.3](biblioteca_quarkus.md) | v0.1 |
-| Filtro HTTP (`requestId` / contexto de requisição) | [implementacao_slf4j.md § 12](implementacao_slf4j.md) | v0.2 |
-| Extensão Quarkus (build-time, auto-config, Dev UI) | [biblioteca_quarkus.md](biblioteca_quarkus.md) | v0.2 |
-| Rastreamento de exceções (`ExceptionReporter`) | [logging_revisado.md § 14](logging_revisado.md) | v0.3 |
-| Log de auditoria (`@Auditable`, `AuditWriter`) | [logging_revisado.md § 13](logging_revisado.md) | v0.3 |
-| Eventos de negócio (`businessEvent()`) | [logging_revisado.md § 8.3](logging_revisado.md) | v0.1 |
+| Logging estruturado — framework 5W1H | [Padrão de Logging em Aplicações Java.md](Logs/Padrão de Logging em Aplicações Java.md) | v0.1 |
+| DSL + Fluent Interface (`LogSistematico`) | [implementacao_slf4j.md](Logs/implementacao_slf4j.md) / [biblioteca_quarkus.md](Logs/biblioteca_quarkus.md) | v0.1 |
+| Interceptor CDI automático (`@Logged`) | [implementacao_slf4j.md](Logs/implementacao_slf4j.md) / [biblioteca_quarkus.md](Logs/biblioteca_quarkus.md) | v0.1 |
+| Mascaramento automático de dados sensíveis (`SanitizadorDados`) | [Padrão de Logging em Aplicações Java.md § 10](Logs/Padrão de Logging em Aplicações Java.md) | v0.1 |
+| Integração OpenTelemetry (`traceId` / `spanId`) | [biblioteca_quarkus.md § 5.3](Logs/biblioteca_quarkus.md) | v0.1 |
+| Filtro HTTP (`requestId` / contexto de requisição) | [implementacao_slf4j.md § 12](Logs/implementacao_slf4j.md) | v0.2 |
+| Extensão Quarkus (build-time, auto-config, Dev UI) | [biblioteca_quarkus.md](Logs/biblioteca_quarkus.md) | v0.2 |
+| Rastreamento de exceções (`ExceptionReporter`) | [Padrão de Logging em Aplicações Java.md § 14](Logs/Padrão de Logging em Aplicações Java.md) | v0.3 |
+| Log de auditoria (`@Auditable`, `AuditWriter`) | [Padrão de Logging em Aplicações Java.md § 13](Logs/Padrão de Logging em Aplicações Java.md) | v0.3 |
+| Eventos de negócio (`businessEvent()`) | [Padrão de Logging em Aplicações Java.md § 8.3](Logs/Padrão de Logging em Aplicações Java.md) | v0.1 |
 | Registro de nomes de campos canônicos | [FIELD_NAMES.md](FIELD_NAMES.md) | v0.1 |
 
 ### 4.2 Fora de Escopo
@@ -241,15 +242,15 @@ Estas são definições conceituais. Detalhes de implementação estão nos docu
 
 | Abstração | Descrição | Documento |
 |---|---|---|
-| `LogSistematico` | Ponto de entrada público da DSL. Implementa as `sealed interfaces` da Fluent Interface, validando a sequência de chamadas em tempo de compilação. | [implementacao_slf4j.md § 8](implementacao_slf4j.md) / [biblioteca_quarkus.md § 5.6](biblioteca_quarkus.md) |
-| `@Logged` | Anotação CDI `@InterceptorBinding` que ativa injeção automática de contexto (`userId`, `traceId`, `spanId`, `servico`, `classe`, `metodo`) e coleta de métricas de duração. | [implementacao_slf4j.md § 9](implementacao_slf4j.md) / [biblioteca_quarkus.md § 5.7](biblioteca_quarkus.md) |
-| `GerenciadorContextoLog` | CDI bean `@ApplicationScoped` responsável pelo ciclo de vida do MDC: inicialização, registro de localização e limpeza garantida no `finally`. | [implementacao_slf4j.md § 5](implementacao_slf4j.md) / [biblioteca_quarkus.md § 5.3](biblioteca_quarkus.md) |
-| `LogContexto` | `record` imutável que representa o snapshot do contexto de correlação de uma requisição (`traceId`, `spanId`, `userId`, `servico`). | [implementacao_slf4j.md § 4](implementacao_slf4j.md) / [biblioteca_quarkus.md § 5.2](biblioteca_quarkus.md) |
-| `LogEvento` | `record` imutável que transporta o evento do builder da DSL até o emissor. Modela as dimensões 5W1H. | [implementacao_slf4j.md § 6](implementacao_slf4j.md) / [biblioteca_quarkus.md § 5.4](biblioteca_quarkus.md) |
-| `SanitizadorDados` | Classe utilitária que aplica mascaramento ou redação a valores sensíveis pelo nome da chave, antes de qualquer registro. | [implementacao_slf4j.md § 3](implementacao_slf4j.md) / [biblioteca_quarkus.md § 5.1](biblioteca_quarkus.md) |
-| `AuditRecord` | `record` imutável capturando ator, ação, entidade-alvo, estados before/after e timestamp. Implementação futura. | [logging_revisado.md § 13](logging_revisado.md) |
-| `AuditWriter` | Interface injetável que emite `AuditRecord` como eventos estruturados de log. Sem implementações de persistência embutidas. Implementação futura. | [logging_revisado.md § 13](logging_revisado.md) |
-| `ExceptionReporter` | Bean CDI que recebe exceções, enriquece com contexto OTel, de-duplica por fingerprint e encaminha ao backend configurado (Sentry, Rollbar, webhook). Implementação futura. | [logging_revisado.md § 14](logging_revisado.md) |
+| `LogSistematico` | Ponto de entrada público da DSL. Implementa as `sealed interfaces` da Fluent Interface, validando a sequência de chamadas em tempo de compilação. | [implementacao_slf4j.md § 8](Logs/implementacao_slf4j.md) / [biblioteca_quarkus.md § 5.6](Logs/biblioteca_quarkus.md) |
+| `@Logged` | Anotação CDI `@InterceptorBinding` que ativa injeção automática de contexto (`userId`, `traceId`, `spanId`, `servico`, `classe`, `metodo`) e coleta de métricas de duração. | [implementacao_slf4j.md § 9](Logs/implementacao_slf4j.md) / [biblioteca_quarkus.md § 5.7](Logs/biblioteca_quarkus.md) |
+| `GerenciadorContextoLog` | CDI bean `@ApplicationScoped` responsável pelo ciclo de vida do MDC: inicialização, registro de localização e limpeza garantida no `finally`. | [implementacao_slf4j.md § 5](Logs/implementacao_slf4j.md) / [biblioteca_quarkus.md § 5.3](Logs/biblioteca_quarkus.md) |
+| `LogContexto` | `record` imutável que representa o snapshot do contexto de correlação de uma requisição (`traceId`, `spanId`, `userId`, `servico`). | [implementacao_slf4j.md § 4](Logs/implementacao_slf4j.md) / [biblioteca_quarkus.md § 5.2](Logs/biblioteca_quarkus.md) |
+| `LogEvento` | `record` imutável que transporta o evento do builder da DSL até o emissor. Modela as dimensões 5W1H. | [implementacao_slf4j.md § 6](Logs/implementacao_slf4j.md) / [biblioteca_quarkus.md § 5.4](Logs/biblioteca_quarkus.md) |
+| `SanitizadorDados` | Classe utilitária que aplica mascaramento ou redação a valores sensíveis pelo nome da chave, antes de qualquer registro. | [implementacao_slf4j.md § 3](Logs/implementacao_slf4j.md) / [biblioteca_quarkus.md § 5.1](Logs/biblioteca_quarkus.md) |
+| `AuditRecord` | `record` imutável capturando ator, ação, entidade-alvo, estados before/after e timestamp. Implementação futura. | [Padrão de Logging em Aplicações Java.md § 13](Logs/Padrão de Logging em Aplicações Java.md) |
+| `AuditWriter` | Interface injetável que emite `AuditRecord` como eventos estruturados de log. Sem implementações de persistência embutidas. Implementação futura. | [Padrão de Logging em Aplicações Java.md § 13](Logs/Padrão de Logging em Aplicações Java.md) |
+| `ExceptionReporter` | Bean CDI que recebe exceções, enriquece com contexto OTel, de-duplica por fingerprint e encaminha ao backend configurado (Sentry, Rollbar, webhook). Implementação futura. | [Padrão de Logging em Aplicações Java.md § 14](Logs/Padrão de Logging em Aplicações Java.md) |
 
 ---
 
@@ -310,14 +311,14 @@ A biblioteca intercepta a chamada, captura o estado before/after e grava um `Aud
 Uma ação do usuário dispara três chamadas downstream:
 
 ```
-Requisição do usuário → pedidos-service  (trace_id: "7d2c...", span_id: "a3ce...")
+Requisição do usuário → pedidos-service  (traceId: "7d2c...", spanId: "a3ce...")
                               ↓
-                       pagamentos-service  (mesmo trace_id: "7d2c...", novo span_id: "b4df...")
+           pagamentos-service  (mesmo traceId: "7d2c...", novo spanId: "b4df...")
                               ↓
-                    notificacoes-service  (mesmo trace_id: "7d2c...", novo span_id: "c5e0...")
+            notificacoes-service  (mesmo traceId: "7d2c...", novo spanId: "c5e0...")
 ```
 
-O engenheiro filtra por `trace_id = "7d2c..."` no agregador de logs e visualiza os eventos dos três serviços em ordem cronológica — com um único filtro, independente de estarem em containers diferentes.
+O engenheiro filtra por `traceId = "7d2c..."` no agregador de logs e visualiza os eventos dos três serviços em ordem cronológica — com um único filtro, independente de estarem em containers diferentes.
 
 ### 7.4 Mascaramento Automático
 
@@ -359,7 +360,57 @@ LogSistematico
 | **Foundation** | `v0.1` | `GerenciadorContextoLog` CDI bean; `LogSistematico` DSL com enforcement 5W1H; `@Logged` interceptor; `SanitizadorDados`; integração OTel (`traceId`/`spanId`); `businessEvent()`; `FIELD_NAMES.md` |
 | **HTTP & Extension** | `v0.2` | Filtro HTTP com `requestId`; extensão Quarkus (`deployment` + `runtime`); auto-config sem `application.properties` manual; Dev UI integrado |
 | **Audit & Exceptions** | `v0.3` | `@Auditable` CDI interceptor; `AuditWriter` implementations; `ExceptionReporter` com de-duplicação por fingerprint e webhook de notificação |
+| **Módulos Planejados** | `v0.4` | Publicação dos módulos `lib-logging-slf4j` e `quarkus-logging-extension` como artefatos oficiais; alinhamento de API pública e contrato de campos com `lib-logging-quarkus` |
+| **Métricas & Traces** | `v0.5` | Conceituação oficial dos processos de métricas e traces: definição de SLI/SLO, nomenclatura e cardinalidade de labels, estratégia de amostragem, governança de dashboards e runbooks operacionais |
 | **Production Ready** | `v1.0` | Compatibilidade GraalVM Native Image confirmada; propagação de contexto reativo validada; documentação completa; aplicação de exemplo |
+
+### 8.4 Backlog Conceitual (TODO)
+
+**Conceitos que deveriam entrar no projeto**
+
+- Versão de schema de log e compatibilidade.
+   - Definir schemaVersion, política de depreciação de campos e janela de compatibilidade entre versões.
+
+- Governança de cardinalidade.
+   - Limites para comDetalhe e tags (campos de alta cardinalidade), com regras para evitar explosão de índice/custo em Loki/Elastic.
+
+- Política de retenção e classificação de dados.
+   - Matriz por tipo de dado (operacional, auditoria, segurança), com TTL, mascaramento, redação e base legal LGPD.
+
+- Confiabilidade do pipeline de logs.
+   - Contratos para perda aceitável, backpressure, comportamento em collector indisponível e fallback operacional.
+
+- Objetivos operacionais (SLO/SLI) de observabilidade.
+   - Exemplos: tempo de ingestão, taxa de parse válido, taxa de logs sem traceId, tempo de consulta p95.
+
+- Catálogo de eventos de negócio.
+   - Dicionário oficial de eventType, owner por domínio e semântica de cada evento para evitar drift entre times.
+
+- Estratégia de testes de observabilidade.
+   - Testes automatizados de contrato JSON, validação de mascaramento, presença de contexto e não regressão de campos canônicos.
+
+- Modelo de correlação HTTP/mensageria.
+   - Padrão único para requestId, traceparent, baggage e propagação em Kafka/Rabbit (não só HTTP).
+
+- Matriz de severidade orientada por ação.
+   - Cada nível de log deve ter ação operacional esperada (alerta, página, triagem, apenas histórico).
+
+- Runbooks e KEDB mínimos obrigatórios.
+   - Ligação explícita entre errorCode e procedimento operacional, com responsabilidade de manutenção.
+
+--- 
+
+- [ ] Definir versionamento de schema de logs (`schemaVersion`) e política de compatibilidade/depreciação de campos.
+- [ ] Definir governança de cardinalidade para `comDetalhe()` e labels de métricas.
+- [ ] Definir política de retenção e classificação de dados por tipo de evento (operacional, auditoria, segurança).
+- [ ] Definir objetivos de confiabilidade do pipeline de logs (perda aceitável, backpressure e fallback).
+- [ ] Definir SLI/SLO de observabilidade (latência de ingestão, taxa de parse válido, cobertura de correlação por `traceId`).
+- [ ] Criar catálogo oficial de eventos de negócio (`eventType`) com owner por domínio.
+- [ ] Definir estratégia de testes de observabilidade (contrato JSON, mascaramento, correlação, regressão de campos).
+- [ ] Definir padrão de correlação para HTTP e mensageria (`traceparent`, `baggage`, `requestId`).
+- [ ] Definir matriz de severidade orientada por ação operacional (alerta, triagem, histórico).
+- [ ] Definir processo mínimo de KEDB e runbooks vinculados ao `errorCode`.
+
 
 ---
 
@@ -367,10 +418,10 @@ LogSistematico
 
 **Resolvidas:**
 
-1. ✅ Semântica de identidade — `userId` apenas; `visitor_token` fora do escopo v1.
+1. ✅ Semântica de identidade — `userId` apenas; `visitorToken` fora do escopo v1.
 2. ✅ Estratégia de sampling — `always_on` na aplicação; tail-based no OTel Collector.
 3. ✅ Imutabilidade do registro de auditoria — append-only stream; sem persistência na biblioteca em v1.
-4. ✅ Padrão de nomes de campos — snake_case canônico definido em `FIELD_NAMES.md`; consistente entre os três módulos.
+4. ✅ Padrão de nomes de campos — camelCase canônico definido em `FIELD_NAMES.md`; consistente entre os três módulos.
 5. ✅ PII handling — opt-out automático por nome de chave via `SanitizadorDados`; campos que exigem redação completa devem ser omitidos antes de `.comDetalhe()`.
 6. ✅ Separação audit vs. log — streams separados; log de auditoria é padrão distinto; implementação futura em v0.3.
 
@@ -413,21 +464,21 @@ O VISION 0.1 incluía uma `HealthContributor` interface e um endpoint `/q/health
 
 ---
 
-**`ObservabilityContext` como `@RequestScoped` com `hostname` e `pid`**
+**Bean de contexto dedicado `@RequestScoped` com `hostname` e `pid`**
 
-O VISION 0.1 propunha um bean `@RequestScoped` chamado `ObservabilityContext` como portador central de `trace_id`, `span_id`, `request_id`, `user_id`, `hostname` e `pid`. O projeto usa `GerenciadorContextoLog` (`@ApplicationScoped`) + MDC. A decisão de usar `@ApplicationScoped` em vez de `@RequestScoped` é intencional — o MDC é o mecanismo de propagação thread-local, e criar um bean de escopo de requisição para carregar os mesmos dados seria redundante. Os campos `hostname` e `pid` não estão nos documentos de implementação e não fazem parte do contrato de campos canônicos atual.
+O VISION 0.1 propunha um bean `@RequestScoped` dedicado como portador central de `traceId`, `spanId`, `requestId`, `userId`, `hostname` e `pid`. O projeto usa `GerenciadorContextoLog` (`@ApplicationScoped`) + MDC. A decisão de usar `@ApplicationScoped` em vez de `@RequestScoped` é intencional — o MDC é o mecanismo de propagação thread-local, e criar um bean de escopo de requisição para carregar os mesmos dados seria redundante. Os campos `hostname` e `pid` não estão nos documentos de implementação e não fazem parte do contrato de campos canônicos atual.
 
 ---
 
 **`FieldNameAdapter` com dialetos ECS, Datadog e Graylog**
 
-O VISION 0.1 propunha uma interface `FieldNameAdapter` com implementações para remapear nomes de campos canônicos para convenções de plataforma específicas (`ecs`, `datadog`, `graylog`). A Open Question #4 foi resolvida com snake_case canônico fixo, sem adaptador de dialetos. Introduzir dialetos múltiplos fragmentaria as queries e contradiria o princípio de consistência de nomes de campos. Não há nenhum documento de implementação que mencione essa abstração.
+O VISION 0.1 propunha uma interface `FieldNameAdapter` com implementações para remapear nomes de campos canônicos para convenções de plataforma específicas (`ecs`, `datadog`, `graylog`). A Open Question #4 foi resolvida com camelCase canônico fixo, sem adaptador de dialetos. Introduzir dialetos múltiplos fragmentaria as queries e contradiria o princípio de consistência de nomes de campos. Não há nenhum documento de implementação que mencione essa abstração.
 
 ---
 
-**`StructuredLogger` como abstração central**
+**Abstração de logger estruturado alternativa**
 
-O VISION 0.1 definia `StructuredLogger` como a API primária para emissão de eventos. O projeto usa `LogSistematico` (DSL com Fluent Interface e `sealed interfaces`). São dois modelos de API diferentes; `LogSistematico` já está documentado e implementado com validação em tempo de compilação. `StructuredLogger` não será introduzido.
+O VISION 0.1 definia uma API de logger estruturado alternativa como camada primária de emissão de eventos. O projeto usa `LogSistematico` (DSL com Fluent Interface e `sealed interfaces`). São dois modelos de API diferentes; `LogSistematico` já está documentado e implementado com validação em tempo de compilação. A abstração alternativa não será introduzida.
 
 ---
 
