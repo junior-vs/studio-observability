@@ -46,11 +46,32 @@ public class GerenciadorRastreamento {
     @Inject
     Instance<EnriquecedorSpan> enriquecedores;
 
+    private static final String CAMPO_TRACE_ID = "traceId";
     private static final String CAMPO_SPAN_ID = "spanId";
 
     public GerenciadorRastreamento(Tracer tracer) {
         this.tracer = tracer;
     }
+
+    /**
+     * Sincroniza o MDC com {@code traceId} e {@code spanId} do span OTel ativo.
+     *
+     * <p>Deve ser chamado uma vez por requisição HTTP, no filtro de entrada,
+     * após a instrumentação automática do Quarkus ter associado o span raiz.
+     * Se não houver span ativo (ex: jobs sem instrumentação), nenhum campo
+     * é inserido — evitando valores inválidos.</p>
+     *
+     * <p>Centraliza aqui toda a escrita de campos de rastreamento no MDC,
+     * mantendo o {@code GerenciadorContextoLog} livre de dependências OTel.</p>
+     */
+    public void sincronizarMdcRequisicao() {
+        var spanContext = Span.current().getSpanContext();
+        if (spanContext.isValid()) {
+            MDC.put(CAMPO_TRACE_ID, spanContext.getTraceId());
+            MDC.put(CAMPO_SPAN_ID, spanContext.getSpanId());
+        }
+    }
+
     /**
      * Cria um Child Span para o método interceptado e atualiza o MDC.
      *

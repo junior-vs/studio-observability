@@ -4,6 +4,7 @@ import java.security.Principal;
 
 import br.com.vsjr.labs.log.context.GerenciadorContextoLog;
 import br.com.vsjr.labs.log.dsl.LogSistematico;
+import br.com.vsjr.labs.log.tracing.GerenciadorRastreamento;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.container.ContainerResponseContext;
@@ -19,8 +20,10 @@ import jakarta.ws.rs.ext.Provider;
  *
  * <p>Executa em duas fases:</p>
  * <ol>
- *   <li><b>Request</b>: extrai o usuário autenticado e inicializa o MDC com
- *       {@code userId}, {@code traceId} e {@code spanId} do span OTel ativo.</li>
+ *   <li><b>Request</b>: extrai o usuário autenticado, inicializa o MDC com
+ *       {@code userId} e {@code servico} via {@link GerenciadorContextoLog}, e
+ *       sincroniza {@code traceId} e {@code spanId} do span OTel ativo via
+ *       {@link GerenciadorRastreamento} — mantendo as responsabilidades separadas.</li>
  *   <li><b>Response</b>: limpa o MDC — obrigatório para evitar vazamento de
  *       contexto entre requisições no pool de threads do Vert.x.</li>
  * </ol>
@@ -34,10 +37,12 @@ public class LogContextoFiltro implements ContainerRequestFilter, ContainerRespo
 
 
     GerenciadorContextoLog gerenciador;
+    GerenciadorRastreamento gerenciadorRastreamento;
 
-
-    public LogContextoFiltro(GerenciadorContextoLog gerenciador) {
+    public LogContextoFiltro(GerenciadorContextoLog gerenciador,
+                              GerenciadorRastreamento gerenciadorRastreamento) {
         this.gerenciador = gerenciador;
+        this.gerenciadorRastreamento = gerenciadorRastreamento;
     }
 
     /**
@@ -47,12 +52,12 @@ public class LogContextoFiltro implements ContainerRequestFilter, ContainerRespo
     public void filter(ContainerRequestContext requestContext) {
         var userId = resolverUsuario(requestContext);
         var contexto = gerenciador.inicializar(userId);
+        gerenciadorRastreamento.sincronizarMdcRequisicao();
 
         LogSistematico
                 .registrando("Contexto de log inicializado")
                 .em(LogContextoFiltro.class, "filter")
                 .comDetalhe("userId", contexto.userId())
-                .comDetalhe("traceId", contexto.temTrace() ? contexto.traceId() : "sem-trace")
                 .debug();
     }
 
