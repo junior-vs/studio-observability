@@ -10,7 +10,7 @@ import jakarta.enterprise.context.ApplicationScoped;
  *
  * <p>A anotação {@link Logged} na classe ativa o {@code LogInterceptor} em todos os
  * métodos: injeta {@code userId}, {@code traceId}, {@code spanId}, {@code classe} e
- * {@code metodo} no MDC e registra a duração como métrica Micrometer.</p>
+ * {@code metodo} no MDC.</p>
  *
  * <p>A anotação {@link Rastreado} cria um Child Span OTel para cada invocação,
  * garantindo correlação com Jaeger/Grafana Tempo.</p>

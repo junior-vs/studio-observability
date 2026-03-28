@@ -24,7 +24,7 @@ import jakarta.interceptor.InvocationContext;
  * são responsabilidade do {@link br.com.vsjr.labs.observability.filtro.LogContextoFiltro} e
  * permanecem intactos durante toda a execução da requisição.</p>
  *
- * <p><b>Métricas</u>:</b> serão implementadas em módulo separado, mantendo
+ * <p><b>Métricas:</b> serão implementadas em módulo separado, mantendo
  * a responsabilidade única deste interceptor.</p>
  */
 @Logged

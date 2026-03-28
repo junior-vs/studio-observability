@@ -1,188 +1,259 @@
-# Rastreamento Distribuído (Distributed Tracing)
+# Rastreamento Distribuído
 
-> Padrão estrutural para correlação de execuções através do ecossistema de microsserviços. O rastreamento unifica logs dispersos em uma narrativa única de transação de usuário.
->
-> *Conceitualmente aderente ao padrão homônimo catalogado no repositório [iluwatar/java-design-patterns](https://github.com/iluwatar/java-design-patterns).*
-
----
-
-## 1. Visão Geral
-
-Em uma arquitetura de microsserviços, uma única operação do usuário (como fechar um pedido) pode percorrer dezenas de serviços distintos. Cada serviço registra os próprios eventos, mas esses rastros ocorrem simultaneamente a milhares de outras requisições. Sem um identificador global, reconstruir a jornada de um problema torna-se virtualmente impossível.
-
-O Rastreamento Distribuído resolve essa questão atribuindo um **Trace ID** no ponto de entrada e propagando-o por cada salto de rede, agrupando *Spans* (blocos de execução) e *Logs* (eventos granulares) sob o mesmo guarda-chuva.
+> **Documentos relacionados:**
+> - [Padrões de Codificação](CODING_STANDARDS.md) — padrões proibidos, incluindo geração manual de `traceId`
 
 ---
 
-## 2. Posicionamento nos Três Pilares da Observabilidade
+## Parte I — Conceitos
 
-O Rastreamento Distribuído é um dos três pilares da **Observabilidade** — a capacidade de entender o estado interno de um sistema a partir das saídas que ele gera. Os três pilares operam de forma complementar e cada um responde a uma pergunta distinta:
+---
+
+### 1. O Problema: Requisições sem Identidade
+
+Em uma arquitetura de microsserviços, uma única operação do usuário — como fechar um pedido — pode percorrer dezenas de serviços distintos. Cada serviço emite seus próprios logs, mas esses registros ocorrem simultaneamente a milhares de outras requisições. Sem um identificador global compartilhado, reconstruir a jornada de um problema torna-se virtualmente impossível.
+
+O cenário concreto sem rastreamento:
+
+```
+14:32:01.001  [pedidos-service]       ERROR  "Falha no pagamento da ordem ORD-9912"
+14:32:01.003  [pagamentos-service]    ERROR  "Cartão recusado: USR-445"
+14:32:01.240  [notificacoes-service]  INFO   "E-mail enviado para usuário desconhecido"
+```
+
+Essas três linhas pertencem à mesma requisição do mesmo usuário. Sem um identificador comum, não há como determinar isso automaticamente — a investigação depende de correlação manual por timestamps aproximados, o que em sistemas de alto volume é impraticável.
+
+Com rastreamento distribuído:
+
+```
+14:32:01.001  [pedidos-service]       ERROR  traceId=7d2c  "Falha no pagamento da ordem ORD-9912"
+14:32:01.003  [pagamentos-service]    ERROR  traceId=7d2c  "Cartão recusado: USR-445"
+14:32:01.240  [notificacoes-service]  INFO   traceId=7d2c  "E-mail enviado para USR-445"
+```
+
+Uma única query por `traceId=7d2c` em qualquer agregador de logs reconstrói a história completa da requisição em todos os serviços.
+
+> **Definição do padrão (Richardson — microservices.io):** cada instância de serviço registra informações sobre as requisições que processa usando um formato padrão. Cada requisição recebe um identificador único que é propagado por todos os serviços participantes, permitindo correlação completa de ponta a ponta.
+
+---
+
+### 2. O Rastreamento Distribuído nos Três Pilares da Observabilidade
+
+O Rastreamento Distribuído é um dos três pilares da **Observabilidade** — a capacidade de entender o estado interno de um sistema a partir das saídas externas que ele gera, sem necessidade de instrumentação adicional para cada novo tipo de pergunta. Os três pilares são complementares e cada um responde a uma pergunta distinta:
 
 | Pilar | Pergunta Central | Natureza do Dado |
-| --- | --- | --- |
-| **Logging** | *"O que aconteceu em um momento específico?"* | Registros discretos de eventos textuais com severidade |
-| **Monitoring / Metrics** | *"Como o sistema está se comportando agora e quais são as tendências?"* | Valores numéricos agregados (CPU, memória, req/min) |
+|---|---|---|
+| **Logging** | *"O que aconteceu em um momento específico?"* | Registros discretos de eventos com contexto e severidade |
+| **Métricas** | *"Como o sistema está se comportando agora e quais são as tendências?"* | Valores numéricos agregados: CPU, memória, requisições por minuto, percentis de latência |
 | **Tracing** | *"Por onde a requisição passou e por que demorou ou falhou?"* | Grafo temporal de operações encadeadas entre serviços |
 
-O mnemônico prático que resume a interação entre os três: **Métricas dizem *se* há um problema; Traces dizem *onde* ele está; Logs dizem *qual* foi o erro exato.** O OpenTelemetry é a infraestrutura que une os três sinais em um único pipeline de telemetria.
+O mnemônico que resume a interação entre os três: **Métricas dizem *se* há um problema; Traces dizem *onde* ele está; Logs dizem *qual* foi o erro exato.** O OpenTelemetry é a infraestrutura que une os três sinais em um único pipeline de telemetria, com correlação nativa via `traceId`.
 
-Operar sistemas distribuídos sem observabilidade é equivalente a conduzir um veículo com o painel apagado e o capô selado — o problema só se revela quando o sistema para completamente.
-
----
-
-## 3. Conceitos Fundamentais
-
-### 3.1 Trace ID
-
-Cada requisição que entra no sistema recebe um **identificador único global** chamado Trace ID. Esse identificador é propagado entre os serviços — geralmente via cabeçalhos HTTP — de modo que todas as ações realizadas em nome daquela requisição possam ser correlacionadas em uma única árvore de execução, independentemente de quantas fronteiras de rede sejam atravessadas.
-
-### 3.2 Span
-
-O Span é a **unidade básica de trabalho** dentro de um rastreamento. Cada operação significativa — a execução de um método, uma consulta ao banco de dados, uma chamada remota a outro serviço — é representada por um Span. Um Span registra obrigatoriamente seu momento de início e de fim, possibilitando o cálculo preciso de latência individual de cada componente.
-
-Os Spans carregam metadados enriquecidos:
-
-- **Trace ID e Span ID**: identificadores que correlacionam Spans de diferentes serviços pertencentes à mesma transação.
-- **Tags**: pares chave-valor para busca e filtragem (URL acessada, método HTTP, código de status, ID de cliente etc.).
-- **Logs / Eventos**: mensagens associadas a momentos específicos dentro do Span, úteis para capturar exceções ou erros no contexto exato onde ocorreram.
-
-### 3.3 Estrutura Hierárquica (Root Span e Child Spans)
-
-Os Spans são aninhados, formando uma **estrutura em árvore**. O Span criado no ponto de entrada da requisição é chamado de **Root Span**; qualquer operação subsequente gera um **Child Span** vinculado ao pai que o originou. Essa hierarquia permite visualizar:
-
-- A **ordem das operações**: qual serviço chamou qual e em que sequência.
-- **Onde o tempo foi gasto**: a comparação entre a duração do Root Span e a soma dos Child Spans expõe imediatamente onde estão os gargalos de desempenho.
-
-### 3.4 Propagação de Contexto
-
-Para que o rastreamento funcione entre serviços distintos, o Trace ID precisa "viajar" junto com a requisição. Esse mecanismo é chamado de **Propagação de Contexto** e é executado via cabeçalhos HTTP. O padrão de mercado é o **W3C TraceContext** (`traceparent: 00-[traceId]-[parentSpanId]-01`), que garante interoperabilidade entre implementações de diferentes fornecedores.
+> Operar sistemas distribuídos sem observabilidade é equivalente a conduzir um veículo com o painel apagado e o capô selado — o problema só se revela quando o sistema para completamente. *(Cindy Sridharan — Monitoring and Observability)*
 
 ---
 
-## 4. OpenTelemetry (OTel) — O Padrão de Mercado
+### 3. Conceitos Fundamentais
 
-O **OpenTelemetry** é um projeto de código aberto mantido pela CNCF (*Cloud Native Computing Foundation*) que fornece um padrão unificado — APIs, SDKs e protocolos — para instrumentar, gerar, coletar e exportar dados de telemetria (traces, métricas e logs).
+#### 3.1. Trace
 
-Antes do OpenTelemetry, cada ferramenta de monitoramento exigia o uso de sua biblioteca proprietária, criando *vendor lock-in*: migrar do Datadog para o New Relic, por exemplo, implicava reescrever todo o código de instrumentação. O OTel eliminou esse problema — instrumenta-se o código **uma única vez** usando o padrão aberto e os dados podem ser enviados para qualquer plataforma de mercado compatível.
+Um **Trace** representa o ciclo de vida completo de uma requisição externa — desde a ação do usuário até a resposta final, atravessando todos os serviços envolvidos. É identificado por um **Trace ID** globalmente único, gerado no ponto de entrada do sistema e propagado por todos os saltos de rede subsequentes.
 
-### 4.1 Instrumentação
+Um trace é estruturalmente uma **árvore de Spans**. O Trace ID é a raiz que unifica essa árvore — constante ao longo de toda a operação distribuída.
 
-A instrumentação pode ocorrer de duas formas:
+#### 3.2. Span
 
-- **Automática**: em frameworks como o Quarkus, ao adicionar a extensão `quarkus-opentelemetry`, todos os endpoints REST são rastreados automaticamente sem qualquer alteração no código de negócio.
-- **Manual (Customizada)**: desenvolvedores podem usar a anotação `@WithSpan` em métodos específicos ou a API de `Tracer` para criar Spans customizados, garantindo que partes críticas da lógica interna também sejam monitoradas detalhadamente.
+O **Span** é a unidade básica de trabalho dentro de um trace. Cada operação significativa é representada por um Span independente: a execução de um endpoint HTTP, uma consulta ao banco de dados, uma chamada a um serviço externo, a execução de um método de negócio crítico.
 
-### 4.2 Protocolo OTLP e Pipeline de Coleta
+Um Span registra obrigatoriamente:
 
-O OpenTelemetry utiliza o protocolo **OTLP** (*OpenTelemetry Line Protocol*) para transmitir dados de telemetria para fora da aplicação. O pipeline típico segue o seguinte fluxo:
+| Campo | Descrição |
+|---|---|
+| `trace_id` | Identificador do trace raiz — mesmo valor em todos os spans da operação |
+| `span_id` | Identificador único deste span dentro do trace |
+| `parent_span_id` | Span pai que originou este (ausente apenas no Root Span) |
+| `operation_name` | O que este span representa (ex: `POST /pedidos`, `SELECT orders`) |
+| `start_time` | Timestamp UTC com precisão de nanosegundos |
+| `end_time` | Timestamp UTC com precisão de nanosegundos |
+| `duration_ms` | Derivado de `end_time - start_time` |
+| `status` | `OK`, `ERROR` ou `UNSET` |
+| `attributes` | Pares chave-valor com metadados da operação |
+
+Além dos campos obrigatórios, Spans carregam:
+
+- **Atributos (*Tags*):** pares chave-valor para busca e filtragem — URL, método HTTP, código de status, ID de entidade de negócio.
+- **Eventos de Span:** mensagens associadas a momentos específicos dentro do Span, úteis para registrar exceções ou marcos relevantes no contexto exato onde ocorreram.
+
+#### 3.3. Estrutura Hierárquica: Root Span e Child Spans
+
+Os Spans formam uma **árvore**. O Span criado no ponto de entrada da requisição — geralmente o endpoint HTTP — é o **Root Span**. Cada operação subsequente cria um **Child Span** vinculado ao Span pai que o originou.
+
+Essa hierarquia permite responder duas perguntas fundamentais:
+
+- **Ordem de execução:** qual serviço chamou qual, em que sequência e com quais parâmetros.
+- **Distribuição de latência:** a comparação entre a duração do Root Span e a soma dos Child Spans revela imediatamente onde o tempo está sendo consumido — banco de dados, serviço externo, processamento interno.
+
+```
+Root Span: POST /pedidos                          [0ms ──────────────────── 250ms]
+  └─ Child Span: PedidoService.criar              [5ms ──────────────── 245ms]
+       ├─ Child Span: EstoqueService.reservar     [10ms ──── 80ms]
+       ├─ Child Span: PagamentoService.processar  [90ms ──────────── 200ms]
+       │    └─ Child Span: GatewayClient.cobrar   [95ms ─────────── 195ms]
+       └─ Child Span: notificacoes.enviar         [205ms ── 240ms]
+```
+
+Nesse exemplo, o gargalo é `GatewayClient.cobrar` — 100ms de 250ms totais, visível imediatamente sem necessidade de instrumentação adicional.
+
+#### 3.4. Propagação de Contexto
+
+Para que o rastreamento funcione entre serviços distintos, o Trace ID e o Span ID do pai precisam viajar junto com cada requisição. Esse mecanismo é a **Propagação de Contexto**.
+
+O padrão de mercado é o **W3C TraceContext** (recomendação W3C, 2021), que define o formato do cabeçalho HTTP `traceparent`:
+
+```
+traceparent: 00-[traceId-128bits]-[parentSpanId-64bits]-01
+              │   │                 │                    │
+              │   └─ 32 hex chars   └─ 16 hex chars      └─ flags (01 = sampled)
+              └─ versão do protocolo
+```
+
+O padrão W3C garante interoperabilidade entre implementações de diferentes fornecedores. Um serviço instrumentado com Quarkus/OTel pode propagar contexto para um serviço Node.js, Python ou .NET sem nenhuma configuração adicional — desde que todos respeitem o W3C TraceContext.
+
+---
+
+### 4. OpenTelemetry — O Padrão CNCF
+
+O **OpenTelemetry** (OTel) é um projeto de código aberto mantido pela **CNCF** (*Cloud Native Computing Foundation*) que fornece APIs, SDKs e protocolos padronizados para instrumentar, gerar, coletar e exportar dados de telemetria — traces, métricas e logs.
+
+Antes do OpenTelemetry, cada plataforma de observabilidade exigia sua própria biblioteca proprietária de instrumentação, criando *vendor lock-in* estrutural: migrar do Datadog para o New Relic implicava reescrever toda a instrumentação. O OTel eliminou esse problema — o código é instrumentado **uma única vez** usando o padrão aberto, e os dados podem ser roteados para qualquer plataforma compatível via configuração, sem alteração de código.
+
+#### 4.1. Instrumentação
+
+A instrumentação pode ocorrer em dois níveis:
+
+**Automática:** em frameworks como o Quarkus, a extensão `quarkus-opentelemetry` instrumenta endpoints REST, clientes HTTP e operações de banco de dados automaticamente — sem nenhuma alteração no código de negócio. O Root Span da requisição e os Child Spans das chamadas downstream são criados e encerrados pelo framework.
+
+**Manual (customizada):** quando a instrumentação automática não cobre uma operação relevante — um método de negócio crítico, uma etapa de processamento de lote, uma operação com semântica de negócio importante — o desenvolvedor pode usar a anotação `@WithSpan` ou a API `Tracer` diretamente para criar Spans adicionais com atributos de domínio.
+
+#### 4.2. Protocolo OTLP e Pipeline de Coleta
+
+O OpenTelemetry usa o protocolo **OTLP** (*OpenTelemetry Protocol*) para transmitir dados de telemetria da aplicação para o backend de análise. O pipeline típico:
 
 ```
 Aplicação (OTel SDK)
         │
-        │  OTLP (gRPC ou HTTP)
+        │  OTLP (gRPC ou HTTP/Protobuf)
         ▼
-OTel Collector  ──(filtragem, aggregation, sampling)──▶  Backend de Análise
-                                                          (Jaeger / Grafana Tempo / Datadog)
+OTel Collector  ──(filtragem, aggregation, tail sampling)──▶  Backend de Análise
+                                                               (Jaeger / Grafana Tempo / Datadog)
 ```
 
-Em ambientes menores ou de desenvolvimento, a aplicação pode exportar diretamente para um backend compatível, dispensando o Collector intermediário. Em produção e larga escala, o Collector é recomendado pois centraliza políticas de filtragem, amostragem e roteamento sem alterar o código da aplicação.
+Em ambientes de desenvolvimento, a aplicação pode exportar diretamente para o backend, dispensando o Collector intermediário. Em produção, o **OTel Collector é recomendado** pois centraliza políticas de filtragem, amostragem e roteamento — sem alterar o código da aplicação para mudar de backend ou ajustar política de coleta.
 
-### 4.3 Ferramentas de Visualização
+#### 4.3. Backends de Visualização
 
-Os dados coletados são armazenados e visualizados em ferramentas especializadas:
-
-- **Jaeger**: amplamente utilizado em ambientes cloud-native; oferece cronogramas detalhados de requisições e permite análise de causa raiz diretamente no painel.
-- **Zipkin**: alternativa madura, especialmente em ecossistemas Spring.
-- **Grafana Tempo**: ganhou forte adoção corporativa por integrar-se nativamente ao ecossistema Grafana (Loki para logs, Prometheus para métricas), unificando os três pilares de observabilidade em um único painel operacional.
-
----
-
-## 5. Quando Utilizar (When to Use)
-
-Baseado nos preceitos arquiteturais de design de microsserviços, este padrão é imperativo quando:
-
-- Múltiplos serviços formam um único caminho de requisição de usuário e o diagnóstico de falhas exige visibilidade além das fronteiras do serviço.
-- Monitorar e descobrir gargalos de performance (*bottlenecks*) em um ambiente altamente distribuído é crítico para o negócio.
-- A correlação de Logs e Métricas de serviços independentes é o único meio prático de atestar a saúde geral do sistema perante os usuários.
+| Backend | Característica |
+|---|---|
+| **Jaeger** | Open-source, amplamente adotado em cloud-native; cronogramas detalhados e análise de causa raiz integrada |
+| **Grafana Tempo** | Integração nativa com Loki (logs) e Prometheus (métricas) — unifica os três pilares em um único painel operacional |
+| **Zipkin** | Alternativa madura, especialmente em ecossistemas Spring |
+| **Elastic APM** | Integração natural com o stack ELK |
+| **Datadog** | Plataforma de observabilidade gerenciada com correlação automática entre os três pilares |
 
 ---
 
-## 6. Integração Nativa no Quarkus
+### 5. `traceId` vs. `spanId` — Granularidades Complementares
 
-O projeto utiliza a extensão `quarkus-opentelemetry` como provedora primária do rastreamento. O esforço de configuração é mínimo, pois a plataforma injeta os agrupadores automaticamente.
+Os dois identificadores operam em granularidades diferentes dentro da mesma árvore de execução:
 
-Com a dependência instalada, o Quarkus:
-
-- Cria o *Root Span* nos endpoints HTTP de entrada (Controllers / JAX-RS).
-- Propaga o cabeçalho **W3C TraceContext** (`traceparent`) nas chamadas do REST Client para outros serviços.
-- Injeta automaticamente `traceId` e `spanId` no MDC, de modo que o provedor JSON do JBoss Logging os empacote na saída do Console (`logging-quarkus`).
-
-### A Arquitetura do `logging-quarkus` (LogSistematico)
-
-A biblioteca captura esses metadados passivamente a cada `.info()` ou `.erro()`. Assim, um erro no Serviço A e um processamento no Serviço B carregam o mesmo conjunto chave-valor em seus respectivos `stdout`, unificando as visualizações em agregadores (Kibana, Loki).
-
----
-
-## 7. Extração Segura de Trace (vs. Falsificação)
-
-É anti-padrão gerar `UUID.randomUUID()` aleatoriamente e tratar o resultado como `traceId`. Metadados inventados pela aplicação não criam grafos inter-serviços nas ferramentas modernas — o dado deve vir da árvore legítima do rastreador subjacente.
-
-Ao acionar blocos passivos assíncronos que perdem o contexto nativo da requisição HTTP, deve-se usar os componentes de contexto da biblioteca:
-
-```java
-// O GerenciadorContextoLog descobre se existe uma transação OTel ativa
-// e a transporta para o ecossistema do Log sem que o dev precise manusear IDs.
-try {
-    gerenciadorContextoLog.inicializar(usuarioAtivo); // Puxa traceId/spanId reais e injeta no MDC
-    // ...
-} finally {
-    gerenciadorContextoLog.limpar();
-}
-```
-
----
-
-## 8. Trade-offs (Custo e Desvantagens)
-
-Embora agregue grande maturidade ao diagnóstico, a arquitetura de rastreamento exige atenção às seguintes ressalvas:
-
-- **Overhead Transacional**: a coleta de traces em alta amostragem adiciona esforço computacional, latência extra a cada requisição HTTP (injeção de cabeçalhos) e aumento do tamanho dos payloads internos.
-- **Complexidade de Infraestrutura**: exige configuração e sustentação de tecnologias externas dedicadas (Jaeger, Zipkin, OTel Collector, bancos de dados de grande retenção para Spans).
-- **Gerenciamento de Volume**: em ecossistemas de grande escala, gravar 100% dos metadados satura o disco. Técnicas como *Tail-based Sampling* — reter apenas os traces que contêm falhas — são necessárias para controlar o volume sem perder diagnóstico.
-
----
-
-## 9. `traceId` vs `spanId`
-
-Os dois identificadores são complementares e operam em granularidades diferentes dentro da mesma árvore de execução:
-
-| Identificador | Granularidade | Propósito Real |
-| --- | --- | --- |
+| Identificador | Granularidade | Propósito |
+|---|---|---|
 | `traceId` | **Toda a transação** — atravessa bordas de múltiplos serviços | Correlacionar todos os spans de uma requisição de ponta a ponta; é o identificador de busca no Jaeger/Grafana Tempo |
 | `spanId` | **Uma operação individual** — um método, uma query, uma chamada downstream | Identificar o nó exato da árvore onde ocorreu a falha ou o gargalo de latência |
 
-O `traceId` é constante ao longo de toda a requisição; o `spanId` muda a cada nova unidade de trabalho, sempre referenciando o `spanId` do pai que o originou. Juntos, eles formam o par mínimo necessário para diagnóstico completo em um ambiente distribuído.
+O `traceId` é **constante** ao longo de toda a requisição distribuída. O `spanId` **muda a cada nova unidade de trabalho**, sempre referenciando o `spanId` do Span pai que o originou. Juntos, formam o par mínimo necessário para diagnóstico completo em ambiente distribuído — sem nenhum identificador adicional.
 
-*Ambos adotam o formato `camelCase` em conformidade com a taxonomia nativa da saída OTel/Quarkus Logging (`traceId`, `spanId`).*
+Ambos adotam o formato `camelCase` em conformidade com a saída nativa do OTel SDK e do JBoss Logging do Quarkus (`traceId`, `spanId`).
 
----
+**Anti-padrão: `traceId` gerado manualmente**
 
-## 10. Padrões Relacionados (Related Patterns)
-
-O Distributed Tracing atua de forma muito mais poderosa quando desenhado em conjunto com os padrões clássicos de microsserviços:
-
-- **API Gateway**: atua como o ponto absoluto de entrada (*front-door*) e é geralmente responsável por criar o primeiro *Root Span* na requisição que viaja aos *downstreams*.
-- **Log Aggregation**: o tracing isolado é pouco útil; ele brilha quando associado ao Log Aggregation (ex.: Elasticsearch / Loki), garantindo que ao pesquisar por um Trace ID se visualize o relatório inteiro agrupado.
-- **Circuit Breaker**: utilizados em conjunto para mapear falhas em cascata; o rastreamento expõe graficamente qual nó ativou o disjuntor de circuito.
-- **Saga**: orquestra transações distribuídas (onde cada nó encerra partes de uma transação maior); o Trace ID persistido no rastro mantém a integridade dos cancelamentos e compensações.
+Gerar `UUID.randomUUID()` e usá-lo como `traceId` cria um identificador que não existe em nenhuma árvore de rastreamento. Ele não correlaciona com nenhum span no Jaeger, não aparece em nenhum trace no Grafana Tempo e torna o campo completamente inútil para diagnóstico distribuído. O `traceId` deve sempre ser extraído do contexto OTel ativo.
 
 ---
 
-## 11. Implementação na Biblioteca Quarkus (`lib-logging-quarkus`)
+### 6. Correlação com Logs — O Elo entre os Pilares
+
+O rastreamento distribuído atinge seu potencial máximo quando os `traceId` e `spanId` estão presentes em **cada linha de log** emitida durante a execução. Essa correlação é o que transforma logs isolados em evidências de uma narrativa coerente.
+
+```json
+{
+  "timestamp":   "2026-03-11T21:55:00.123Z",
+  "level":       "ERROR",
+  "message":     "Falha ao processar pagamento",
+  "traceId":     "4bf92f3577b34da6a3ce929d0e0e4736",
+  "spanId":      "a3ce929d0e0e4736",
+  "userId":      "joao.silva@empresa.com",
+    "applicationName": "pagamentos-service",
+  "log_motivo":  "Gateway recusou a transação",
+  "detalhe_ordemId": "9912"
+}
+```
+
+Com esses campos presentes, o fluxo de investigação de um incidente é:
+
+1. Alerta dispara com base em métricas (taxa de erro acima de limiar).
+2. O engenheiro abre o Jaeger e busca por traces com `status=ERROR` na janela de tempo.
+3. Localiza o trace problemático pelo `traceId` e visualiza o grafo de spans — identifica que `GatewayClient.cobrar` retornou erro.
+4. Clica no `spanId` específico e navega diretamente para os logs correlacionados em Kibana/Loki.
+5. Os logs exibem o contexto completo do erro: usuário, ordem, código de gateway, stack trace.
+
+O `traceId` é a chave que une o alerta de métrica, o grafo de trace e o detalhe do log — em uma única operação de investigação, sem varreduras manuais.
+
+**Registro correto do Span ID nos logs:** quando um Child Span é criado para um método de negócio, o `spanId` nos logs subsequentes deve ser o do Child Span — não o do Root Span. Isso permite localizar exatamente qual operação dentro do grafo gerou cada linha de log.
+
+---
+
+### 7. Quando Utilizar
+
+O padrão de rastreamento distribuído é necessário quando:
+
+- Múltiplos serviços formam um único caminho de requisição e o diagnóstico de falhas exige visibilidade além das fronteiras de um serviço individual.
+- A latência ponta-a-ponta de uma operação é crítica para o negócio e é necessário identificar qual componente contribui com qual parcela do tempo total.
+- A correlação entre logs de serviços independentes é necessária para confirmar a saúde geral do sistema perante os usuários.
+- Investigações de incidente precisam reconstruir a sequência causal de eventos em sistemas com alta taxa de requisições concorrentes.
+
+---
+
+### 8. Trade-offs
+
+O rastreamento distribuído agrega maturidade diagnóstica significativa, mas exige atenção a ressalvas operacionais:
+
+**Overhead transacional:** a coleta de traces adiciona esforço computacional — injeção de cabeçalhos em cada chamada HTTP, criação e encerramento de objetos Span, exportação via rede para o backend. Em implementações bem projetadas como o Dapper do Google, o overhead é mantido abaixo de 0,01% do throughput total — mas isso depende de amostragem adequada. Coletar 100% dos spans em sistemas de alto volume é impraticável.
+
+> O paper Dapper (Google, 2010) documenta o requisito fundamental: o overhead deve ser suficientemente baixo para que a instrumentação possa ser habilitada em todos os serviços em produção, sem que os times precisem escolher entre observabilidade e performance.
+
+**Complexidade de infraestrutura:** requer configuração e operação de tecnologias dedicadas — OTel Collector, backend de traces (Jaeger, Grafana Tempo), armazenamento de spans com retenção adequada. Em ecossistemas pequenos, o custo operacional pode superar o benefício diagnóstico.
+
+**Gerenciamento de volume:** em sistemas de grande escala, gravar 100% dos spans satura o armazenamento. A solução é **Tail-Based Sampling** — a decisão de reter ou descartar um trace é tomada *após* o trace completar, garantindo que traces com erros sejam sempre retidos independente da taxa de amostragem de traces normais. O OTel Collector é o componente responsável por essa política; a aplicação emite 100% dos spans e o Collector aplica a filtragem sem alteração de código.
+
+---
+
+### 9. Padrões Relacionados
+
+O rastreamento distribuído opera em conjunto com outros padrões de arquitetura de microsserviços:
+
+- **Log Aggregation** (Iluwatar, Richardson): o rastreamento isolado tem valor limitado. Ele atinge máxima utilidade quando associado à agregação centralizada de logs — ao pesquisar por um `traceId` no Kibana ou Loki, o resultado é a história completa da requisição em todos os serviços.
+- **API Gateway**: ponto de entrada único do sistema e responsável natural por criar o Root Span de cada requisição que chega do lado externo. O `traceId` gerado no Gateway propaga-se por todos os serviços internos.
+- **Circuit Breaker**: usado em conjunto com rastreamento para mapear falhas em cascata — o grafo de spans expõe graficamente qual nó ativou o disjuntor e com que latência.
+- **Saga**: o `traceId` persistido ao longo de uma transação distribuída mantém a rastreabilidade de cada etapa de compensação ou confirmação — essencial para auditoria e diagnóstico de transações de longa duração.
+
+---
+
+## Parte II — Implementação na Biblioteca Quarkus
 
 > Padrão de referência: Chris Richardson — [Distributed Tracing (microservices.io)](https://microservices.io/patterns/observability/distributed-tracing.html)
 
-Esta seção documenta a camada de rastreamento distribuído da biblioteca. A implementação cobre os cinco requisitos do padrão microservices.io e se integra ao `GerenciadorContextoLog` e ao `LogContextoFiltro` já existentes — sem duplicar responsabilidades.
+Esta seção documenta a camada de rastreamento distribuído da `lib-logging-quarkus`. A implementação satisfaz os cinco requisitos do padrão microservices.io e integra-se ao `GerenciadorContextoLog` e ao `LogContextoFiltro` existentes — sem duplicar responsabilidades.
 
 | Requisito microservices.io | Mecanismo | Componente |
 |---|---|---|
@@ -194,16 +265,16 @@ Esta seção documenta a camada de rastreamento distribuído da biblioteca. A im
 
 ---
 
-### 11.1. Atualização da Estrutura do Projeto
+### 10. Estrutura do Projeto
 
-Os novos componentes de tracing se encaixam no pacote `tracing/` — separado do pacote `context/` de logging para manter a separação de responsabilidades:
+Os componentes de tracing ficam em `tracing/` — separado do pacote `context/` de logging para preservar a separação de responsabilidades:
 
 ```
 lib-logging-quarkus/
 └── src/main/java/br/com/seudominio/log/
     ├── annotations/
-    │   ├── Logged.java              ← @InterceptorBinding CDI (logging)
-    │   └── Rastreado.java           ← @InterceptorBinding CDI (tracing)   ✦ novo
+    │   ├── Logged.java                    ← @InterceptorBinding CDI (logging)
+    │   └── Rastreado.java                 ← @InterceptorBinding CDI (tracing)   ✦ novo
     ├── context/
     │   ├── LogContexto.java
     │   ├── GerenciadorContextoLog.java
@@ -217,17 +288,17 @@ lib-logging-quarkus/
     │   └── LogContextoFiltro.java
     ├── interceptor/
     │   ├── LogInterceptor.java
-    │   └── RastreamentoInterceptor.java   ← CDI @AroundInvoke + OTel Tracer  ✦ novo
+    │   └── RastreamentoInterceptor.java   ← CDI @AroundInvoke + OTel Tracer     ✦ novo
     └── tracing/
         ├── EnriquecedorSpan.java          ← Interface do pipeline de enriquecimento  ✦ novo
-        ├── EnriquecedorMetadados.java     ← Metadados técnicos (prioridade 10)        ✦ novo
-        ├── EnriquecedorIdentidade.java    ← Identidade do usuário (prioridade 20)     ✦ novo
-        └── GerenciadorRastreamento.java   ← Ciclo de vida do Span + MDC sync          ✦ novo
+        ├── EnriquecedorMetadados.java     ← Metadados técnicos (prioridade 10)       ✦ novo
+        ├── EnriquecedorIdentidade.java    ← Identidade do usuário (prioridade 20)    ✦ novo
+        └── GerenciadorRastreamento.java   ← Ciclo de vida do Span + MDC sync         ✦ novo
 ```
 
 ---
 
-### 11.2. Dependência Maven Adicional
+### 11. Dependências Maven
 
 A API do OpenTelemetry já está disponível transitivamente via `quarkus-opentelemetry`. Nenhuma dependência adicional é necessária.
 
@@ -253,9 +324,7 @@ A API do OpenTelemetry já está disponível transitivamente via `quarkus-opente
 
 ---
 
-### 11.3. Configuração de Exportação (`application.properties`)
-
-A exportação é configurável por ambiente via propriedades — sem recompilação:
+### 12. Configuração de Exportação (`application.properties`)
 
 ```properties
 # ─── OpenTelemetry — Exportação de Traces ─────────────────────────────────────
@@ -268,7 +337,7 @@ quarkus.otel.exporter.otlp.endpoint=http://jaeger:4317
 # quarkus.otel.exporter.otlp.protocol=grpc
 
 # Amostragem: always_on envia 100% dos spans para o Collector.
-# Políticas de Tail-Based Sampling residem no OTel Collector — não aqui.
+# Políticas de Tail-Based Sampling residem no OTel Collector — não na aplicação.
 quarkus.otel.traces.sampler=always_on
 
 # Nome do serviço: aparece como rótulo em todos os spans no Jaeger/Grafana Tempo.
@@ -276,13 +345,13 @@ quarkus.otel.traces.sampler=always_on
 quarkus.application.name=pedidos-service
 
 # ─── Backends alternativos ─────────────────────────────────────────────────────
-# Zipkin  → quarkus.otel.exporter.otlp.endpoint=http://zipkin:9411/api/v2/spans
+# Zipkin       → quarkus.otel.exporter.otlp.endpoint=http://zipkin:9411/api/v2/spans
 # OTel Collector → quarkus.otel.exporter.otlp.endpoint=http://otel-collector:4317
 ```
 
 ---
 
-### 11.4. `@Rastreado` — Anotação CDI de Tracing
+### 13. `@Rastreado` — Anotação CDI de Tracing
 
 ```java
 package br.com.seudominio.log.annotations;
@@ -295,7 +364,7 @@ import java.lang.annotation.*;
  *
  * <p>Quando aplicada, o {@link br.com.seudominio.log.interceptor.RastreamentoInterceptor}
  * cria um {@code Child Span} no span OTel ativo, registra metadados da operação
- * (classe, método, hora de início/fim) e propaga o {@code traceId} atualizado
+ * (classe, método, hora de início/fim) e propaga o {@code spanId} atualizado
  * para o MDC — mantendo a correlação com as linhas de log emitidas dentro
  * do método.</p>
  *
@@ -328,12 +397,9 @@ public @interface Rastreado {
 
 ---
 
-### 11.5. `GerenciadorRastreamento` — Ciclo de Vida do Span
+### 14. `GerenciadorRastreamento` — Ciclo de Vida do Span
 
-Centraliza a criação, enriquecimento e encerramento de spans. Separa a lógica
-OTel do interceptor, tornando cada responsabilidade testável de forma isolada.
-Implementa o padrão **Chain of Responsibility** via `Instance<EnriquecedorSpan>`:
-novos enriquecedores são descobertos automaticamente pelo CDI sem alteração nesta classe.
+Centraliza a criação, enriquecimento e encerramento de spans. Separa a lógica OTel do interceptor, tornando cada responsabilidade testável de forma isolada. Implementa o padrão **Pipeline** via `Instance<EnriquecedorSpan>`: novos enriquecedores são descobertos automaticamente pelo CDI sem alteração nesta classe.
 
 ```java
 package br.com.seudominio.log.tracing;
@@ -391,19 +457,28 @@ public class GerenciadorRastreamento {
 
     /** Encerra o span e restaura o spanId do pai no MDC. */
     public void encerrar(ContextoSpan ctx, String spanIdPai) {
-        ctx.scope().close();
-        ctx.span().end();
-        if (spanIdPai != null) {
-            MDC.put(CAMPO_SPAN_ID, spanIdPai);
-        } else {
-            MDC.remove(CAMPO_SPAN_ID);
+        try {
+            ctx.scope().close();
+            ctx.span().end();
+        } catch (Exception e) {
+            // Falha de infraestrutura OTel não deve interromper o fluxo de negócio
+        } finally {
+            if (spanIdPai != null) {
+                MDC.put(CAMPO_SPAN_ID, spanIdPai);
+            } else {
+                MDC.remove(CAMPO_SPAN_ID);
+            }
         }
     }
 
     /** Marca o span como ERROR e registra a exceção como evento do span. */
     public void marcarErro(ContextoSpan ctx, Throwable causa) {
-        ctx.span().setStatus(StatusCode.ERROR, causa.getMessage());
-        ctx.span().recordException(causa);
+        try {
+            ctx.span().setStatus(StatusCode.ERROR, causa.getMessage());
+            ctx.span().recordException(causa);
+        } catch (Exception e) {
+            // Falha de infraestrutura OTel não deve interromper o fluxo de negócio
+        }
     }
 
     public record ContextoSpan(Span span, Scope scope) {}
@@ -412,12 +487,9 @@ public class GerenciadorRastreamento {
 
 ---
 
-### 11.6. `RastreamentoInterceptor` — CDI Interceptor de Tracing
+### 15. `RastreamentoInterceptor` — CDI Interceptor de Tracing
 
-Intercepta métodos anotados com `@Rastreado` e delega o ciclo de vida do span
-ao `GerenciadorRastreamento`. Executa antes do `LogInterceptor` via `@Priority`
-menor, garantindo que o `spanId` do Child Span já esteja no MDC quando o
-`LogInterceptor` registrar a localização do método.
+Intercepta métodos anotados com `@Rastreado` e delega o ciclo de vida do span ao `GerenciadorRastreamento`. Executa antes do `LogInterceptor` via `@Priority` menor, garantindo que o `spanId` do Child Span já esteja no MDC quando o `LogInterceptor` registrar a localização do método.
 
 ```java
 package br.com.seudominio.log.interceptor;
@@ -433,7 +505,7 @@ import org.jboss.logging.MDC;
 /**
  * CDI Interceptor ativado por {@link Rastreado}.
  *
- * Ordem na cadeia:
+ * Ordem na cadeia de interceptors:
  *   RastreamentoInterceptor  [APPLICATION - 10] → cria span, atualiza spanId no MDC
  *   LogInterceptor           [APPLICATION]      → registra classe/metodo no MDC
  *   Método de negócio
@@ -474,11 +546,9 @@ public class RastreamentoInterceptor {
 
 ---
 
-### 11.7. `EnriquecedorSpan` — Interface do Pipeline de Enriquecimento
+### 16. `EnriquecedorSpan` — Interface do Pipeline de Enriquecimento
 
-Define o contrato para enriquecer spans com atributos OTel. O `GerenciadorRastreamento`
-descobre implementações via CDI (`Instance<EnriquecedorSpan>`) e as executa em ordem
-crescente de `prioridade()` — sem acoplamento a nenhuma implementação concreta.
+Define o contrato para enriquecer spans com atributos OTel. O `GerenciadorRastreamento` descobre implementações via CDI (`Instance<EnriquecedorSpan>`) e as executa em ordem crescente de `prioridade()` — sem acoplamento a nenhuma implementação concreta.
 
 ```java
 package br.com.seudominio.log.tracing;
@@ -486,6 +556,14 @@ package br.com.seudominio.log.tracing;
 import io.opentelemetry.api.trace.Span;
 import jakarta.interceptor.InvocationContext;
 
+/**
+ * Contrato do pipeline de enriquecimento de spans.
+ *
+ * <p>Implementações são descobertas automaticamente pelo CDI via
+ * {@code Instance<EnriquecedorSpan>} no {@link GerenciadorRastreamento}.
+ * Novos atributos obrigatórios ou de negócio entram como novos beans
+ * {@code @ApplicationScoped} sem alterar o núcleo da biblioteca.</p>
+ */
 public interface EnriquecedorSpan {
 
     /**
@@ -498,7 +576,7 @@ public interface EnriquecedorSpan {
     void enriquecer(Span span, InvocationContext contexto);
 
     /**
-     * Ordem de execução na cadeia — valor menor executa primeiro.
+     * Ordem de execução no pipeline — valor menor executa primeiro.
      * Padrão: {@link Integer#MAX_VALUE}.
      */
     default int prioridade() {
@@ -512,14 +590,13 @@ public interface EnriquecedorSpan {
 | Faixa | Tipo | Implementações embutidas |
 |---|---|---|
 | 1–50 | Atributos técnicos obrigatórios | `EnriquecedorMetadados` (10), `EnriquecedorIdentidade` (20) |
-| 100+ | Atributos de negócio opcionais | Qualquer enriquecedor de domínio da aplicação |
+| 100+ | Atributos de negócio — domínio da aplicação | Enriquecedores customizados do time |
 
 ---
 
-### 11.8. Enriquecedores Embutidos
+### 17. Enriquecedores Embutidos
 
-**`EnriquecedorMetadados` (prioridade 10)** — adiciona atributos técnicos via
-[OTel Code Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/code/):
+**`EnriquecedorMetadados` (prioridade 10)** — adiciona atributos técnicos via [OTel Code Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/code/):
 
 | Atributo OTel | Valor |
 |---|---|
@@ -527,23 +604,18 @@ public interface EnriquecedorSpan {
 | `code.namespace` | Nome qualificado da classe interceptada |
 | `code.function` | Nome do método interceptado |
 
-**`EnriquecedorIdentidade` (prioridade 20)** — adiciona `enduser.id` quando a
-requisição não é anônima. Usa `SecurityIdentity` do Quarkus — nunca `null`,
-retorna identidade anônima quando nenhuma extensão de segurança está configurada.
+**`EnriquecedorIdentidade` (prioridade 20)** — adiciona `enduser.id` quando a requisição não é anônima. Usa `SecurityIdentity` do Quarkus via `Instance<SecurityIdentity>` com guarda `isResolvable()` — nunca lança `ContextNotActiveException` fora de contextos HTTP.
 
 ---
 
-### 11.9. Exemplo — Enriquecedor de Negócio Customizado
+### 18. Enriquecedor de Negócio Customizado
 
-Enriquecedores de negócio implementam `EnriquecedorSpan` e são descobertos
-automaticamente pelo CDI. O `contexto.getParameters()` expõe os argumentos reais
-da invocação — útil para extrair identificadores e valores visíveis no
-Jaeger/Grafana Tempo sem alterar o código de negócio.
+Enriquecedores de negócio implementam `EnriquecedorSpan` e são descobertos automaticamente pelo CDI. O `contexto.getParameters()` expõe os argumentos reais da invocação — útil para extrair identificadores visíveis no Jaeger/Grafana Tempo sem alterar o código de negócio.
 
 ```java
 /**
- * Enriquecedor de negócio — captura operandos da operação de divisão.
- * Prioridade 100: executa após os enriquecedores de infra (10 e 20).
+ * Enriquecedor de negócio — captura operandos da operação.
+ * Prioridade 100: executa após os enriquecedores de infraestrutura (10 e 20).
  */
 @ApplicationScoped
 public class EnriquecedorOperacao implements EnriquecedorSpan {
@@ -568,21 +640,21 @@ public class EnriquecedorOperacao implements EnriquecedorSpan {
 }
 ```
 
-**Saída esperada no span (visível no Jaeger/Grafana Tempo):**
+**Atributos resultantes no span (visíveis no Jaeger/Grafana Tempo):**
 
-| Atributo | Tipo | Descrição |
-|---|---|---|
-| `service.name` | `string` | `pedidos-service` (de `EnriquecedorMetadados`) |
-| `code.namespace` | `string` | `br.com.seudominio.CalcService` |
-| `code.function` | `string` | `divide` |
-| `enduser.id` | `string` | `joao.silva@empresa.com` (de `EnriquecedorIdentidade`) |
-| `operacao.dividendo` | `string` | `10.0` |
-| `operacao.divisor` | `string` | `2.0` |
-| `operacao.risco` | `boolean` | `false` |
+| Atributo | Origem |
+|---|---|
+| `service.name` | `EnriquecedorMetadados` |
+| `code.namespace` | `EnriquecedorMetadados` |
+| `code.function` | `EnriquecedorMetadados` |
+| `enduser.id` | `EnriquecedorIdentidade` |
+| `operacao.dividendo` | `EnriquecedorOperacao` |
+| `operacao.divisor` | `EnriquecedorOperacao` |
+| `operacao.risco` | `EnriquecedorOperacao` |
 
 ---
 
-### 11.10. Exemplos de Uso
+### 19. Exemplos de Uso
 
 **Caso 1 — Apenas `@Rastreado`: serviço de integração externa**
 
@@ -592,9 +664,9 @@ public class EnriquecedorOperacao implements EnriquecedorSpan {
 public class IntegracaoFiscalClient {
 
     public NotaFiscal emitir(Pedido pedido) {
-        // O RastreamentoInterceptor criou um span "IntegracaoFiscalClient.emitir"
+        // RastreamentoInterceptor criou um span "IntegracaoFiscalClient.emitir"
         // vinculado ao traceId da requisição HTTP original.
-        // Qualquer exceção aqui é automaticamente marcada no span como ERROR.
+        // Qualquer exceção é automaticamente marcada no span como ERROR.
         return chamarApiExterna(pedido);
     }
 }
@@ -618,17 +690,14 @@ public class PagamentoService {
             .comDetalhe("ordemId", ordem.getId())
             .comDetalhe("valor",   ordem.getValor())
             .info();
-        // JSON de saída inclui: traceId, spanId (do Child Span), userId, servico
+        // JSON inclui: traceId, spanId (Child Span), userId, applicationName
 
         return gateway.processar(ordem);
     }
 }
 ```
 
-**Caso 3 — Atributos de negócio via `EnriquecedorSpan`**
-
-Para adicionar atributos de domínio ao span sem alterar o código de negócio,
-implemente `EnriquecedorSpan`. O CDI descobre automaticamente novos enriquecedores.
+**Caso 3 — Enriquecedor de negócio para atributos de domínio**
 
 ```java
 @ApplicationScoped
@@ -652,31 +721,9 @@ public class EnriquecedorEstoque implements EnriquecedorSpan {
 }
 ```
 
-**Saída JSON de um log emitido dentro de um método `@Rastreado`:**
-
-```json
-{
-  "timestamp":        "2026-03-24T14:32:00.847Z",
-  "level":            "INFO",
-  "message":          "Pagamento iniciado",
-  "traceId":          "4bf92f3577b34da6a3ce929d0e0e4736",
-  "spanId":           "f9d3a1b2c4e56789",
-  "userId":           "joao.silva@empresa.com",
-  "servico":          "pagamentos-service",
-  "log_classe":       "PagamentoService",
-  "log_metodo":       "processar",
-  "detalhe_ordemId":  "8821",
-  "detalhe_valor":    "1249.90"
-}
-```
-
-O `spanId` acima é o do **Child Span** criado pelo `RastreamentoInterceptor` —
-não o do Root Span da requisição HTTP. Isso permite localizar exatamente
-qual operação de negócio gerou cada linha de log no grafo do Jaeger.
-
 ---
 
-### 11.11. Diagrama de Fluxo — Requisição com `@Logged` + `@Rastreado`
+### 20. Diagrama de Fluxo — Requisição com `@Logged` + `@Rastreado`
 
 ```
 Requisição HTTP recebida
@@ -684,7 +731,7 @@ Requisição HTTP recebida
         ▼
 LogContextoFiltro.filter(request)
   └─ GerenciadorContextoLog.inicializar(userId)
-       └─ MDC: { traceId, spanId(root), userId, servico }
+    └─ MDC: { traceId, spanId(root), userId, applicationName }
         │
         ▼
 RastreamentoInterceptor.rastrear()          [Priority = APPLICATION - 10]
@@ -700,7 +747,7 @@ LogInterceptor.interceptar()                [Priority = APPLICATION]
         ▼
 Método de negócio executa
   └─ LogSistematico.registrando(...).info()
-       └─ JSON: { traceId, spanId(filho), userId, servico, classe, metodo, ... }
+    └─ JSON: { traceId, spanId(filho), userId, applicationName, classe, metodo, ... }
         │
         ▼
 LogInterceptor.finally
@@ -718,23 +765,63 @@ LogContextoFiltro.filter(response)
        └─ MDC: {} (limpo)
 ```
 
+**JSON de um log emitido dentro de um método `@Rastreado`:**
+
+```json
+{
+  "timestamp":        "2026-03-24T14:32:00.847Z",
+  "level":            "INFO",
+  "message":          "Pagamento iniciado",
+  "traceId":          "4bf92f3577b34da6a3ce929d0e0e4736",
+  "spanId":           "f9d3a1b2c4e56789",
+  "userId":           "joao.silva@empresa.com",
+    "applicationName":  "pagamentos-service",
+  "log_classe":       "PagamentoService",
+  "log_metodo":       "processar",
+  "detalhe_ordemId":  "8821",
+  "detalhe_valor":    "1249.90"
+}
+```
+
+O `spanId` acima é o do Child Span criado pelo `RastreamentoInterceptor` — não o do Root Span da requisição HTTP. Isso permite localizar exatamente qual operação de negócio gerou cada linha de log no grafo do Jaeger.
+
 ---
 
-## Decições Arquiteturais:
-Problema atual: o GerenciadorRastreamento é sólido, mas adicionarAtributo() é chamado manualmente pelo código de negócio. À medida que o projeto crescer, cada serviço vai querer enriquecer spans com atributos diferentes — alguns obrigatórios (como servico.nome), outros opcionais (como pagamento.valor). Sem estrutura, isso vira código ad-hoc espalhado.
-O que propor: uma cadeia de EnriquecedorSpan que executa em sequência quando um span é iniciado. Cada enriquecedor decide se tem algo a contribuir e passa adiante.
-javapublic interface EnriquecedorSpan {
-    void enriquecer(Span span, InvocationContext contexto);
-}
+## Referências
 
-// Enriquecedor obrigatório — nome do serviço, classe, método
-@ApplicationScoped
-public class EnriquecedorMetadados implements EnriquecedorSpan { ... }
+**Padrões de microsserviços:**
+- Chris Richardson — [Distributed Tracing (microservices.io)](https://microservices.io/patterns/observability/distributed-tracing.html)
+- Chris Richardson — [Application Logging (microservices.io)](https://microservices.io/patterns/observability/application-logging.html)
+- Chris Richardson — [Exception Tracking (microservices.io)](https://microservices.io/patterns/observability/exception-tracking.html)
+- Chris Richardson — [Audit Logging (microservices.io)](https://microservices.io/patterns/observability/audit-logging.html)
+- Iluwatar — [java-design-patterns: microservices-log-aggregation](https://github.com/iluwatar/java-design-patterns/tree/master/microservices-log-aggregation)
+- Iluwatar — [java-design-patterns: microservices-distributed-tracing](https://github.com/iluwatar/java-design-patterns/tree/master/microservices-distributed-tracing)
 
-// Enriquecedor opcional — injeta SecurityIdentity se disponível
-@ApplicationScoped
-public class EnriquecedorIdentidade implements EnriquecedorSpan { ... }
+**Pesquisa e engenharia de sistemas:**
+- Benjamin Sigelman et al. — [Dapper, a Large-Scale Distributed Systems Tracing Infrastructure](https://research.google/pubs/pub36356/) (Google, 2010) — paper seminal sobre rastreamento distribuído em larga escala
+- Microsoft Research (2010) — *Characterizing Logging Practices in Open-Source Software*
+- Anton Chuvakin — *Security Information and Event Management*
 
-// GerenciadorRastreamento injeta todos e executa em ordem
-@Inject Instance<EnriquecedorSpan> enriquecedores;
-Benefício concreto: o GerenciadorRastreamento deixa de saber "o que" enriquecer — ele apenas orquestra. Novos atributos obrigatórios de segurança, regulatórios ou de negócio entram como novos beans sem alterar o núcleo.
+**Observabilidade e SRE:**
+- Charity Majors, Liz Fong-Jones, George Miranda — *Observability Engineering* (O'Reilly, 2022)
+- Betsy Beyer, Chris Jones et al. — *Site Reliability Engineering* (Google, 2016)
+- Cindy Sridharan — *Distributed Systems Observability* (O'Reilly, 2018)
+- Cindy Sridharan — [Monitoring and Observability](https://copyconstruct.medium.com/monitoring-and-observability-8417d1952e1c)
+- James Turnbull — *The Art of Monitoring* (O'Reilly, 2018)
+
+**Padrões e especificações:**
+- [OpenTelemetry Specification](https://opentelemetry.io/docs/specs/)
+- [W3C TraceContext Recommendation](https://www.w3.org/TR/trace-context/)
+- [OTel Code Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/code/)
+- [Quarkus 3.x — OpenTelemetry Guide](https://quarkus.io/guides/opentelemetry)
+- [Elasticsearch Common Schema (ECS)](https://www.elastic.co/guide/en/ecs/current/)
+
+**Ferramentas:**
+- [Jaeger](https://www.jaegertracing.io/) — backend de tracing distribuído open-source
+- [Grafana Tempo](https://grafana.com/oss/tempo/) — armazenamento de traces escalável
+- [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/) — pipeline de telemetria agnóstico de vendor
+- [Grafana Loki](https://grafana.com/oss/loki/) — armazenamento e consulta de logs
+- [Prometheus](https://prometheus.io/) — coleta de métricas e alertas
+- [Grafana](https://grafana.com/) — dashboards e visualização
+- [Elasticsearch + Kibana (ELK)](https://www.elastic.co/) — indexação e busca de logs estruturados
+- [Datadog](https://www.datadoghq.com/) — plataforma de observabilidade gerenciada

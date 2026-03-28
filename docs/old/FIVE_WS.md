@@ -12,7 +12,7 @@ The 5 Ws is the foundational logging model for OBSERVA4J. Borrowed from journali
 | Dimension | Question | Example Fields |
 | --- | --- | --- |
 | **Who** | Who triggered this event? | `user_id`, `hostname` |
-| **What** | What happened? | `event_type`, `message`, `order_id` |
+| **What** | What happened? | `eventType`, `message`, `order_id` |
 | **When** | When did it happen? | `@timestamp` (UTC, millisecond precision) |
 | **Where** | Where in the system? | `request_id`, `trace_id`, `queue_name`, `stack_trace` |
 | **Why** | Why did this happen? | The narrative formed by combining the other four Ws |
@@ -71,7 +71,7 @@ log.error("Error processing payment: Order#{} — Card declined", orderId);
 
 The `What` covers both:
 
-| Type | Example `event_type` | Purpose |
+| Type | Example `eventType` | Purpose |
 | --- | --- | --- |
 | Technical | `EXCEPTION`, `DB_QUERY_FAILED` | Debugging and incident response |
 | Business | `ORDER_COMPLETED`, `CART_ABANDONED` | Analytics, KPIs, business intelligence |
@@ -84,7 +84,7 @@ Where relevant, include the entity's state at the moment of the event:
 
 ```json
 {
-  "event_type": "ORDER_SAVE_FAILED",
+  "eventType": "ORDER_SAVE_FAILED",
   "order_id": "ORD-9912",
   "order_status": "pending",
   "order_value": 349.90
@@ -209,14 +209,14 @@ Structured events enable dashboards showing conversion funnels, cart abandonment
 
 ```json
 {
-  "event_type": "CHECKOUT_STARTED",
+  "eventType": "CHECKOUT_STARTED",
   "user_id": "USR-445",
   "cart_value": 500.00,
   "region": "south"
 }
 ```
 
-A Kibana query over `event_type = CHECKOUT_STARTED` grouped by `region` gives the regional checkout funnel — no separate database table required.
+A Kibana query over `eventType = CHECKOUT_STARTED` grouped by `region` gives the regional checkout funnel — no separate database table required.
 
 ### 6.2 Audit and Proof of Innocence
 
@@ -228,8 +228,8 @@ When a third-party API (payment gateway, logistics provider) blames your service
 
 Consistent field names and formats allow ML-based or threshold-based alerting:
 
-- A spike in `event_type = LOGIN_FAILED` for a single `user_id` in a short `@timestamp` window → brute-force attack alert
-- An 80% drop in `event_type = ORDER_CREATED` vs. the hourly baseline → UI bug blocking checkout, even with zero error logs
+- A spike in `eventType = LOGIN_FAILED` for a single `user_id` in a short `@timestamp` window → brute-force attack alert
+- An 80% drop in `eventType = ORDER_CREATED` vs. the hourly baseline → UI bug blocking checkout, even with zero error logs
 
 ### 6.4 Performance Optimisation
 

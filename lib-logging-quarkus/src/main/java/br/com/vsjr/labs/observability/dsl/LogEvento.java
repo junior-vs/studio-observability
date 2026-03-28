@@ -1,6 +1,8 @@
 package br.com.vsjr.labs.observability.dsl;
 
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -61,8 +63,49 @@ public record LogEvento(
      * {@code SequencedMap} preserva a ordem de inserção definida pelo desenvolvedor.
      */
     public LogEvento {
-        detalhes = detalhes != null
-                ? Collections.unmodifiableMap(detalhes)
-                : Map.of();
+        evento = normalizarObrigatorio(evento, "evento_nao_informado", false);
+        classe = normalizarObrigatorio(classe, "desconhecido", true);
+        metodo = normalizarObrigatorio(metodo, "desconhecido", true);
+        motivo = normalizarOpcional(motivo, true);
+        canal = normalizarOpcional(canal, true);
+
+        if (detalhes == null || detalhes.isEmpty()) {
+            detalhes = Map.of();
+        } else {
+            var detalhesNormalizados = new LinkedHashMap<String, Object>();
+            detalhes.forEach((chave, valor) -> {
+                var chaveNormalizada = normalizarOpcional(chave, true);
+                if (chaveNormalizada != null) {
+                    detalhesNormalizados.put(canonizarChaveDetalhe(chaveNormalizada), valor != null ? valor : "null");
+                }
+            });
+
+            detalhes = detalhesNormalizados.isEmpty()
+                    ? Map.of()
+                    : Collections.unmodifiableMap(detalhesNormalizados);
+        }
+    }
+
+    private static String normalizarObrigatorio(String valor, String fallback, boolean lowerCase) {
+        var normalizado = normalizarOpcional(valor, lowerCase);
+        return normalizado != null ? normalizado : fallback;
+    }
+
+    private static String normalizarOpcional(String valor, boolean lowerCase) {
+        if (valor == null) {
+            return null;
+        }
+        var normalizado = valor.trim();
+        if (normalizado.isEmpty()) {
+            return null;
+        }
+        return lowerCase ? normalizado.toLowerCase(Locale.ROOT) : normalizado;
+    }
+
+    private static String canonizarChaveDetalhe(String chaveNormalizada) {
+        if ("eventtype".equals(chaveNormalizada) || "event_type".equals(chaveNormalizada)) {
+            return "eventType";
+        }
+        return chaveNormalizada;
     }
 }

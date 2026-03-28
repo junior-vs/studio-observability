@@ -152,7 +152,7 @@ window. A fixed 10s value is insufficient for those cases.
    The `AuditWriter` interface ships no built-in persistence implementations.
 
 2. **Every audit event is logged.** The `@Auditable` interceptor always emits
-   a structured log event (`event_type: AUDIT_*`) via `StructuredLogger`,
+  a structured log event (`eventType: AUDIT_*`) via `StructuredLogger`,
    carrying the full `AuditRecord` fields as JSON. This log entry is the
    library's guaranteed output. Consumers who need persistence subscribe to
    this log stream through their own pipeline (e.g., Logstash → RDBMS,
@@ -358,7 +358,7 @@ improve semantic clarity for composite fields.
 
 **Questions to resolve:**
 
-1. Should audit records be written to the **same JSON log stream** as technical events (differentiated by `event_type = AUDIT_*`) and picked up by the same log aggregation pipeline?
+1. Should audit records be written to the **same JSON log stream** as technical events (differentiated by `eventType = AUDIT_*`) and picked up by the same log aggregation pipeline?
 2. Or should audit records be written to a **completely separate persistence channel** (dedicated database table, Kafka topic, or write-once object storage)?
 3. If both channels are supported, which is the recommended default for new services?
 4. How does the answer interact with the immutability requirement in [Open Question #3](#3-audit-record-immutability)? (Log streams are not inherently immutable.)

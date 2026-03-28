@@ -14,8 +14,8 @@ import java.lang.annotation.*;
  * o span correto no Jaeger/Grafana Tempo.</p>
  *
  * <p>Pode ser combinada com {@link Logged} para obter rastreamento distribuído
- * e métricas Micrometer simultaneamente. Nesse caso, {@code @Rastreado} executa
- * primeiro ({@code Priority APPLICATION - 10}) e o {@code spanId} do filho já
+ * e enriquecimento de contexto de logging no mesmo método. Nesse caso,
+ * {@code @Rastreado} executa primeiro ({@code Priority APPLICATION - 10}) e o {@code spanId} do filho já
  * está no MDC quando o {@link br.com.vsjr.labs.observability.interceptor.LogInterceptor}
  * registrar a localização do método.</p>
  *
@@ -25,7 +25,7 @@ import java.lang.annotation.*;
  * @Rastreado
  * public class IntegracaoFiscalClient { ... }
  *
- * // Rastreamento + métricas
+ * // Rastreamento + contexto de logging
  * @ApplicationScoped
  * @Logged
  * @Rastreado

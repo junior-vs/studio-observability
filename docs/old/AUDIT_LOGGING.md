@@ -94,7 +94,7 @@ subscribes to the log stream.
                         e.g. Logstash → RDBMS, Kafka consumer, S3, etc.
 ```
 
-Every audit event is emitted with `event_type: AUDIT_*` and carries the
+Every audit event is emitted with `eventType: AUDIT_*` and carries the
 full `AuditRecord` fields. This log entry is the library's guaranteed
 output contract.
 

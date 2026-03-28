@@ -28,7 +28,7 @@ public class MetadadosEnriquecedorTracing implements EnriquecedorTracing {
     String applicationName;
 
     public MetadadosEnriquecedorTracing(
-            @ConfigProperty(name = "quarkus.application.name", defaultValue = "servico-desconhecido") String applicationName) {
+            @ConfigProperty(name = "quarkus.application.name", defaultValue = "application-desconhecido") String applicationName) {
         this.applicationName = applicationName;
     }
 

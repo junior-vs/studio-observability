@@ -29,7 +29,7 @@ All log events are emitted as flat JSON objects. The top-level structure is fixe
 ```json
 {
   "@timestamp": "2026-03-09T14:32:01.123Z",
-  "event_type": "ORDER_COMPLETED",
+  "eventType": "ORDER_COMPLETED",
   "message": "Order processed successfully",
   "severity": "INFO",
   "trace_id": "7d2c8e4f1a3b9c2da3f9c2d17b441234",
@@ -101,7 +101,7 @@ OBSERVA4J annotates spans with attributes that are not emitted by default Quarku
 | `fault_tolerance.fallback=true` | `FaultToleranceListener` | When `@Fallback` is activated |
 | `fault_tolerance.timeout=true` | `FaultToleranceListener` | When `@Timeout` is exceeded |
 | `circuit_breaker.state` | `FaultToleranceListener` | On circuit state transition spans |
-| `observa4j.event_type` | `StructuredLogger` | On log-correlated spans |
+| `observa4j.eventType` | `StructuredLogger` | On log-correlated spans |
 
 ### Sampler contract
 
@@ -147,7 +147,7 @@ In addition to the standard Quarkus/Micrometer JVM and HTTP metrics, OBSERVA4J r
 |---|---|---|---|
 | `observa4j_circuit_breaker_state_transitions_total` | Counter | `circuit`, `state` | Incremented on each circuit state transition |
 | `observa4j_retry_attempts_total` | Histogram | `method`, `outcome` | One observation per retry attempt |
-| `observa4j_audit_events_total` | Counter | `event_type`, `outcome` | Incremented per audit event emitted |
+| `observa4j_audit_events_total` | Counter | `eventType`, `outcome` | Incremented per audit event emitted |
 | `observa4j_fallback_activations_total` | Counter | `method` | Incremented each time a `@Fallback` path is taken |
 
 ### Scrape endpoint

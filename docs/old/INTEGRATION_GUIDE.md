@@ -78,7 +78,7 @@ The `graylog` adapter transforms nested fields before transmission:
 
 | GELF field | Type |
 |---|---|
-| `event_type` | string |
+| `eventType` | string |
 | `trace_id` | string |
 | `span_id` | string |
 | `request_id` | string |
@@ -199,7 +199,7 @@ Fields used for exact-match queries must be mapped as `keyword`. Apply this mapp
       "span_id":    { "type": "keyword" },
       "request_id": { "type": "keyword" },
       "user_id":    { "type": "keyword" },
-      "event_type": { "type": "keyword" },
+      "eventType": { "type": "keyword" },
       "severity":   { "type": "keyword" },
       "message":    { "type": "text" },
       "@timestamp": { "type": "date" }
@@ -216,10 +216,10 @@ Fields used for exact-match queries must be mapped as `keyword`. Apply this mapp
 |---|---|
 | Errors last 1h | `severity:ERROR AND @timestamp:[now-1h TO now]` |
 | Trace drill-down | `trace_id:"<value>"` |
-| Audit events | `event_type:AUDIT_*` |
+| Audit events | `eventType:AUDIT_*` |
 | User activity | `user_id:"<value>" AND @timestamp:[now-24h TO now]` |
-| Circuit breaker events | `event_type:CIRCUIT_BREAKER_*` |
-| Retry exhausted | `event_type:RETRY_EXHAUSTED` |
+| Circuit breaker events | `eventType:CIRCUIT_BREAKER_*` |
+| Retry exhausted | `eventType:RETRY_EXHAUSTED` |
 
 ### Local test stack
 
@@ -530,10 +530,10 @@ traces
 
 // Circuit breaker state transitions in the last hour
 traces
-| where customDimensions["event_type"] startswith "CIRCUIT_BREAKER"
+| where customDimensions["eventType"] startswith "CIRCUIT_BREAKER"
 | where timestamp > ago(1h)
 | project timestamp,
-          tostring(customDimensions["event_type"]),
+          tostring(customDimensions["eventType"]),
           tostring(customDimensions["circuit_name"])
 
 // P95 request latency per service, last 24h
@@ -543,10 +543,10 @@ requests
 
 // Audit events by user
 traces
-| where customDimensions["event_type"] startswith "AUDIT_"
+| where customDimensions["eventType"] startswith "AUDIT_"
 | project timestamp,
           tostring(customDimensions["user_id"]),
-          tostring(customDimensions["event_type"]),
+          tostring(customDimensions["eventType"]),
           tostring(customDimensions["entity_id"])
 ```
 

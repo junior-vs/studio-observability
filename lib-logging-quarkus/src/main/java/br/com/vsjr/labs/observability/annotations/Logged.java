@@ -9,8 +9,8 @@ import java.lang.annotation.*;
  *
  * <p>Quando aplicada, o {@link br.com.vsjr.labs.observability.interceptor.LogInterceptor}
  * injeta no MDC: {@code userId}, {@code traceId}, {@code spanId}, {@code classe}
- * e {@code metodo}. Ao término, registra a duração da execução como métrica
- * Micrometer exposta em {@code /q/metrics}.</p>
+ * e {@code metodo}. Métricas foram adiadas para uma implementação futura,
+ * mantendo este interceptor focado apenas em contexto de logging.</p>
  *
  * <p>Pode ser aplicada na classe (todos os métodos) ou em métodos específicos:</p>
  *

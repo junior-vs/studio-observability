@@ -40,23 +40,23 @@ public class GerenciadorContextoLog {
      * Construtor CDI: recebe o nome da aplicação e o conjunto de enriquecedores disponíveis.
      *
      * @param applicationName nome do microsserviço, lido de {@code quarkus.application.name};
-     *                        padrão {@code "aplicacao-desconhecido"}
+     *                        padrão {@code "application-desconhecido"}
      * @param enriquecedores  todos os beans {@link EnriquecedorContexto} descobertos via CDI
      */
     public GerenciadorContextoLog(
-            @ConfigProperty(name = "quarkus.application.name", defaultValue = "aplicacao-desconhecido") String applicationName,
+            @ConfigProperty(name = "quarkus.application.name", defaultValue = "application-desconhecido") String applicationName,
             Instance<EnriquecedorContexto> enriquecedores) {
         this.applicationName = applicationName;
         this.enriquecedores = enriquecedores;
     }
 
     private static final String CAMPO_USER_ID = "userId";
-    private static final String CAMPO_APPLICATION = "aplicacao";
+    private static final String CAMPO_APPLICATION = "applicationName";
 
     /**
      * Inicializa o MDC com o contexto de identificação da requisição atual.
      *
-     * <p>Popula as chaves MDC {@code userId} e {@code aplicacao}. Os campos de rastreamento
+    * <p>Popula as chaves MDC {@code userId} e {@code applicationName}. Os campos de rastreamento
      * distribuído ({@code traceId}, {@code spanId}) são responsabilidade do
      * {@code GerenciadorTracing}, que deve ser chamado na mesma fase de filtro.</p>
      *

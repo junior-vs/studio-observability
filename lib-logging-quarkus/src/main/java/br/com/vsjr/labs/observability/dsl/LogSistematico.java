@@ -7,6 +7,7 @@ import org.jboss.logging.MDC;
 import br.com.vsjr.labs.observability.security.SanitizadorDados;
 
 import java.util.LinkedHashMap;
+import java.util.Locale;
 
 /**
  * Ponto de entrada público da DSL de logging sistemático para Quarkus.
@@ -72,7 +73,7 @@ public final class LogSistematico implements LogEtapas.EtapaOnde, LogEtapas.Etap
     @Override
     public LogEtapas.EtapaOpcional em(Class<?> classe, String metodo) {
         this.classeAlvo = classe;
-        this.metodo = metodo;
+        this.metodo = normalizarTextoOpcional(metodo, true);
         return this;
     }
 
@@ -80,20 +81,24 @@ public final class LogSistematico implements LogEtapas.EtapaOnde, LogEtapas.Etap
 
     @Override
     public LogEtapas.EtapaOpcional porque(String motivo) {
-        this.motivo = motivo;
+        this.motivo = normalizarTextoOpcional(motivo, true);
         return this;
     }
 
     @Override
     public LogEtapas.EtapaOpcional como(String canal) {
-        this.canal = canal;
+        this.canal = normalizarTextoOpcional(canal, true);
         return this;
     }
 
     @Override
     public LogEtapas.EtapaOpcional comDetalhe(String chave, Object valor) {
-        // Sanitização automática: credenciais e dados pessoais são mascarados aqui
-        detalhes.put(chave, SanitizadorDados.sanitizar(chave, valor));
+        var chaveNormalizada = normalizarTextoOpcional(chave, true);
+        if (chaveNormalizada == null) {
+            return this;
+        }
+        // Sanitização automática: credenciais e dados pessoais são mascarados aqui.
+        detalhes.put(chaveNormalizada, SanitizadorDados.sanitizar(chaveNormalizada, valor));
         return this;
     }
 
@@ -140,27 +145,27 @@ public final class LogSistematico implements LogEtapas.EtapaOnde, LogEtapas.Etap
      * diferenciá-los dos campos de infraestrutura no JSON de saída.</p>
      */
     private void emitir(Logger.Level level, Throwable causa) {
-        var logger = Logger.getLogger(classeAlvo);
+        var eventoLog = criarEvento();
+        var classeLogger = classeAlvo != null ? classeAlvo : LogSistematico.class;
+        var logger = Logger.getLogger(classeLogger);
         if (!logger.isEnabled(level)) return;
 
-        var nomeClasse = classeAlvo.getSimpleName();
-
         // Popula MDC com dimensões estruturais do evento
-        MDC.put("log_classe", nomeClasse);
-        MDC.put("log_metodo", metodo);
-        if (motivo != null) MDC.put("log_motivo", motivo);
-        if (canal != null) MDC.put("log_canal", canal);
+        MDC.put("log_classe", eventoLog.classe());
+        MDC.put("log_metodo", eventoLog.metodo());
+        if (eventoLog.motivo() != null) MDC.put("log_motivo", eventoLog.motivo());
+        if (eventoLog.canal() != null) MDC.put("log_canal", eventoLog.canal());
 
         // Detalhes de negócio: cada entrada vira um campo JSON de primeiro nível
-        detalhes.forEach((chave, valor) -> MDC.put("detalhe_" + chave, valor != null ? valor.toString() : "null"));
+        eventoLog.detalhes().forEach((chave, valor) -> MDC.put("detalhe_" + chave, valor != null ? valor.toString() : "null"));
 
 
         try {
             // Emissão via JBoss Logging — integração nativa com quarkus-logging-json
             if (causa != null) {
-                logger.log(level, evento, causa);
+                logger.log(level, eventoLog.evento(), causa);
             } else {
-                logger.log(level, evento);
+                logger.log(level, eventoLog.evento());
             }
         } finally {
             // Limpeza dos campos do evento: não remove o contexto da requisição
@@ -169,10 +174,40 @@ public final class LogSistematico implements LogEtapas.EtapaOnde, LogEtapas.Etap
             MDC.remove("log_metodo");
             MDC.remove("log_motivo");
             MDC.remove("log_canal");
-            detalhes.keySet().forEach(chave -> MDC.remove("detalhe_" + chave));
+            eventoLog.detalhes().keySet().forEach(chave -> MDC.remove("detalhe_" + chave));
 
 
 
         }
+    }
+
+    private LogEvento criarEvento() {
+        var nomeClasse = classeAlvo != null
+                ? classeAlvo.getSimpleName()
+                : "desconhecido";
+        return new LogEvento(
+                normalizarTextoObrigatorio(evento, "evento_nao_informado", false),
+                nomeClasse,
+                metodo,
+                motivo,
+                canal,
+                detalhes
+        );
+    }
+
+    private static String normalizarTextoObrigatorio(String valor, String fallback, boolean lowerCase) {
+        var normalizado = normalizarTextoOpcional(valor, lowerCase);
+        return normalizado != null ? normalizado : fallback;
+    }
+
+    private static String normalizarTextoOpcional(String valor, boolean lowerCase) {
+        if (valor == null) {
+            return null;
+        }
+        var normalizado = valor.trim();
+        if (normalizado.isEmpty()) {
+            return null;
+        }
+        return lowerCase ? normalizado.toLowerCase(Locale.ROOT) : normalizado;
     }
 }

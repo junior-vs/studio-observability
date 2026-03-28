@@ -73,7 +73,7 @@ Audit logging with annotation-driven interception.
      └──▶ AuditWriter
                │
                ▼
-          JSON log stream (event_type: AUDIT_*)
+          JSON log stream (eventType: AUDIT_*)
                │
                ▼
           Consumer pipeline (separate process — platform responsibility)
@@ -170,7 +170,7 @@ StructuredLogger ─────────────────────
       │                                          Log Aggregation Pipeline
       │                                          (Fluentd → Elasticsearch)
       │
-      ├── emits BusinessEvent counter (if event_type present)
+     ├── emits BusinessEvent counter (if eventType present)
       │   via Micrometer → Prometheus → Grafana
       │
       └── (if exception) ExceptionReporter
@@ -258,7 +258,7 @@ User request
      └──▶ AuditWriter
                │
                ▼
-          JSON log stream (event_type: AUDIT_*)
+          JSON log stream (eventType: AUDIT_*)
                │
                ▼
           Consumer pipeline (separate process — platform responsibility)

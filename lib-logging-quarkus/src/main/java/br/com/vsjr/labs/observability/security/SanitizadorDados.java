@@ -1,5 +1,6 @@
 package br.com.vsjr.labs.observability.security;
 
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -53,7 +54,13 @@ public final class SanitizadorDados {
     private enum Sensibilidade { CREDENCIAL, DADO_PESSOAL, PUBLICO }
 
     private static Sensibilidade classificar(String chave) {
-        var chaveLower = chave.toLowerCase();
+        if (chave == null) {
+            return Sensibilidade.PUBLICO;
+        }
+        var chaveLower = chave.trim().toLowerCase(Locale.ROOT);
+        if (chaveLower.isEmpty()) {
+            return Sensibilidade.PUBLICO;
+        }
         if (CHAVES_CREDENCIAIS.contains(chaveLower))   return Sensibilidade.CREDENCIAL;
         if (CHAVES_DADOS_PESSOAIS.contains(chaveLower)) return Sensibilidade.DADO_PESSOAL;
         return Sensibilidade.PUBLICO;

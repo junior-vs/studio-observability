@@ -47,7 +47,7 @@ All three attempt spans share the same `trace_id`. The parent span is marked `ER
 ```json
 {
   "@timestamp": "2026-03-09T14:32:01.030Z",
-  "event_type": "RETRY_ATTEMPT",
+  "eventType": "RETRY_ATTEMPT",
   "service_name": "order-service",
   "trace_id": "7d2c8e4f1a3b9c2d",
   "span_id": "b1c3d4e5",
@@ -65,7 +65,7 @@ On final exhaustion:
 ```json
 {
   "@timestamp": "2026-03-09T14:32:01.090Z",
-  "event_type": "RETRY_EXHAUSTED",
+  "eventType": "RETRY_EXHAUSTED",
   "service_name": "order-service",
   "trace_id": "7d2c8e4f1a3b9c2d",
   "span_id": "b1c3d4e5",
@@ -110,7 +110,7 @@ CLOSED ──[failure threshold exceeded]──▶ OPEN
 ```json
 {
   "@timestamp": "2026-03-09T14:32:05.000Z",
-  "event_type": "CIRCUIT_BREAKER_OPENED",
+  "eventType": "CIRCUIT_BREAKER_OPENED",
   "service_name": "order-service",
   "trace_id": "7d2c8e4f1a3b9c2d",
   "circuit_name": "PaymentService.charge",
@@ -146,7 +146,7 @@ This counter feeds directly into Grafana alert rules for sustained circuit-open 
 ```json
 {
   "@timestamp": "2026-03-09T14:32:01.060Z",
-  "event_type": "TIMEOUT_EXCEEDED",
+  "eventType": "TIMEOUT_EXCEEDED",
   "service_name": "order-service",
   "trace_id": "7d2c8e4f1a3b9c2d",
   "span_id": "c9d1e2f3",
@@ -170,7 +170,7 @@ OBSERVA4J emits a structured event when the fallback path is activated:
 ```json
 {
   "@timestamp": "2026-03-09T14:32:01.095Z",
-  "event_type": "FALLBACK_ACTIVATED",
+  "eventType": "FALLBACK_ACTIVATED",
   "service_name": "order-service",
   "trace_id": "7d2c8e4f1a3b9c2d",
   "span_id": "c9d1e2f3",

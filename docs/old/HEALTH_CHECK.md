@@ -144,7 +144,7 @@ Health check results should be emitted as structured log events and as metrics, 
 ```json
 {
   "@timestamp": "2026-03-09T14:32:01.123Z",
-  "event_type": "HEALTH_CHECK_FAILED",
+  "eventType": "HEALTH_CHECK_FAILED",
   "check_name": "payment-gateway",
   "status": "DOWN",
   "error": "Connection timeout",

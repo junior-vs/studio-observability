@@ -1,6 +1,10 @@
 # Registro de Nomes de Campos
 
-> Este documento formaliza as chaves canônicas de saída JSON para todas as implementações da biblioteca de Logging Sistemático. Os nomes de campos são reservados e devem ser usados consistentemente em todos os serviços e nos três módulos da biblioteca. Usar sinônimos (ex: `usuarioId` em vez de `userId`, ou `service` em vez de `servico`) viola o princípio de consistência e produz resultados divididos em ferramentas de analytics.
+> Este documento formaliza as chaves canônicas de saída JSON para todas as implementações da biblioteca de Logging Sistemático. Os nomes de campos são reservados e devem ser usados consistentemente em todos os serviços e nos três módulos da biblioteca. Usar sinônimos (ex: `usuarioId` em vez de `userId`, ou `service` em vez de `applicationName`) viola o princípio de consistência e produz resultados divididos em ferramentas de analytics.
+>
+> **Documentos relacionados:**
+> - [Padrão de Logging em Aplicações Java](logging_revisado.md) — fundamentos, 5W1H, padrões arquiteturais
+> - [Padrões de Codificação](CODING_STANDARDS.md) — padrões proibidos, obrigatórios e checklist
 
 ---
 
@@ -26,7 +30,7 @@ Campos inseridos automaticamente pelo `GerenciadorContextoLog` via MDC. O desenv
 | `userId` | `string` | Identificador do usuário autenticado. `"anonimo"` quando não autenticado. | Automático — `GerenciadorContextoLog` via SecurityContext |
 | `traceId` | `string` | Identificador do trace distribuído W3C. Presente apenas quando há span OTel ativo. | Automático — OpenTelemetry SDK |
 | `spanId` | `string` | Identificador do span atual dentro do trace. Presente apenas quando há span OTel ativo. | Automático — OpenTelemetry SDK |
-| `servico` | `string` | Nome do microsserviço ou aplicação. Lido de `quarkus.application.name` ou equivalente. | Automático — `GerenciadorContextoLog` |
+| `applicationName` | `string` | Nome do microsserviço ou aplicação. Lido de `quarkus.application.name` ou equivalente. | Automático — `GerenciadorContextoLog` |
 
 **`traceId` vs `spanId`:** os dois identificadores são complementares e operam em granularidades diferentes dentro da mesma árvore de execução. O `traceId` é constante ao longo de toda a requisição distribuída — é o identificador global que atravessa todos os serviços. O `spanId` identifica a operação individual atual dentro do trace — é o identificador do nó exato da árvore onde ocorreu a falha ou o gargalo. Juntos, são suficientes para diagnóstico completo em todos os níveis, sem necessidade de identificadores adicionais.
 
@@ -70,77 +74,8 @@ Campos declarados via `.comDetalhe(chave, valor)`. O prefixo `detalhe_` é aplic
 | `.comDetalhe("pedidoId", 4821)` | `"detalhe_pedidoId": "4821"` | Valores numéricos são convertidos para string |
 | `.comDetalhe("valorTotal", 349.90)` | `"detalhe_valorTotal": 349.90` | Valores `float`/`double` preservam o tipo |
 | `.comDetalhe("errorCode", "PAG-4022")` | `"detalhe_errorCode": "PAG-4022"` | Código de erro para correlação com KEDB |
-| `.comDetalhe("eventType", "ORDER_COMPLETED")` | `"detalhe_eventType": "ORDER_COMPLETED"` | Identificador de evento de negócio |
+| `.comDetalhe("eventType", "ORDER_COMPLETED")` | `"detalhe_eventType": "ORDER_COMPLETED"` | Identificador técnico de tipo de evento |
 | `.comDetalhe("token", tokenValue)` | `"detalhe_token": "****"` | Mascarado automaticamente pelo `SanitizadorDados` |
 | `.comDetalhe("email", emailValue)` | `"detalhe_email": "[PROTEGIDO]"` | Mascarado automaticamente pelo `SanitizadorDados` |
 
 O prefixo `detalhe_` serve dois propósitos: evitar colisão com campos reservados de infraestrutura no índice do Elasticsearch/Loki, e distinguir visualmente campos de negócio de campos de contexto técnico nas ferramentas de analytics.
-
----
-
-## 5. Campos de Auditoria
-
-Campos obrigatórios em registros de `AuditRecord`, gravados via `AuditWriter`. Esses campos constituem o contrato do padrão de Audit Logging e devem estar presentes em todo registro de auditoria.
-
-> ⚠️ **Implementação futura:** o interceptor `@Auditable` e o `AuditWriter` estão planejados para v0.3. Os campos abaixo definem o contrato que essa implementação deverá satisfazer.
-
-| Campo | Tipo | Descrição |
-|---|---|---|
-| `actorId` | `string` | Identificador de quem executou a ação (`userId` ou identidade de sistema). |
-| `actorIp` | `string` | Endereço IP de origem da requisição. |
-| `sessionId` | `string` | Identificador de sessão — vincula ao evento de autenticação correspondente. |
-| `action` | `string` | Tipo de operação: `CREATE`, `UPDATE`, `DELETE`, `READ` (dados sensíveis), `LOGIN`, `LOGOUT`. |
-| `entityType` | `string` | Tipo da entidade afetada. Ex: `"UserProfile"`, `"Order"`, `"PaymentMethod"`. |
-| `entityId` | `string` | Identificador da entidade afetada. |
-| `stateBefore` | `object` | Snapshot do estado relevante da entidade **antes** da ação. |
-| `stateAfter` | `object` | Snapshot do estado relevante da entidade **depois** da ação. |
-| `outcome` | `string` | Resultado da operação: `"SUCCESS"` ou `"FAILURE"` com motivo em caso de falha. |
-| `traceId` | `string` | Correlação com o trace distribuído da requisição. |
-
----
-
-## 6. JSON Completo de Referência
-
-Exemplo de saída JSON para um evento `INFO` completo com todos os campos preenchidos:
-
-```json
-{
-  "timestamp":              "2026-03-11T21:55:00.123Z",
-  "level":                  "INFO",
-  "message":                "Pedido criado",
-  "traceId":                "4bf92f3577b34da6a3ce929d0e0e4736",
-  "spanId":                 "a3ce929d0e0e4736",
-  "userId":                 "joao.silva@empresa.com",
-  "servico":                "pedidos-service",
-  "classe":                 "PedidoService",
-  "metodo":                 "criar",
-  "log_classe":             "PedidoService",
-  "log_metodo":             "criar",
-  "log_motivo":             "Solicitação do cliente via checkout",
-  "log_canal":              "API REST — POST /pedidos",
-  "detalhe_pedidoId":       "4821",
-  "detalhe_valorTotal":     349.90,
-  "detalhe_eventType":      "ORDER_COMPLETED",
-  "detalhe_errorCode":      null
-}
-```
-
----
-
-## Fora do Escopo
-
-### Padronização forçada em snake_case universal
-
-A orientação de usar exclusivamente snake_case para todos os campos não se aplica a esta biblioteca. O projeto adota camelCase para identificadores OTel, auditoria e contexto (`userId`, `traceId`, `actorId`) por consistência com o ecossistema nativo JBoss Logging e OpenTelemetry SDK Java. A escolha é deliberada e documentada — não uma inconsistência.
-
-### Adaptação dinâmica de campos para plataformas externas
-
-Remapear `traceId` para `dd.trace_id` (Datadog) ou para a Elasticsearch Common Schema (ECS) no código da aplicação acopla indevidamente a aplicação às ferramentas de coleta. Essas transformações pertencem ao coletor de infraestrutura (OTel Collector, Logstash, FluentBit) — não ao SDK. A aplicação produz JSON canônico puro; o coletor transforma para o destino.
-
-### `@timestamp` e `severity` como nomes canônicos
-
-Documentos anteriores ditavam `@timestamp` (convenção do Elasticsearch) e `severity` (convenção do GCP Logging) como nomes obrigatórios. A implementação atual usa `timestamp` e `level`, gerados nativamente pelo `quarkus-logging-json` e pelo `JsonTemplateLayout` do Log4j2. A adaptação para `@timestamp` ou `severity` é feita pelo coletor, se necessário.
-
-### Objetos de exceção aninhados obrigatórios
-
-A premissa anterior exigia construção manual de subnós JSON para exceções (`exception.class`, `exception.stack_trace`). A serialização do stack trace e da cadeia de causas é delegada ao formatador nativo (`quarkus-logging-json` ou `JsonTemplateLayout`) — não é responsabilidade da aplicação construir essa estrutura manualmente.

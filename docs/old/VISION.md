@@ -242,7 +242,7 @@ These are conceptual definitions. Implementation details are deferred to the des
 | `ObservabilityEvent` | A sealed interface representing any observable event. Subtypes: `TechnicalEvent` and `BusinessEvent`. |
 | `StructuredLogger` | The primary API for emitting events. Wraps SLF4J and automatically attaches the current `ObservabilityContext` to every event. Enforces the 5 Ws contract. |
 | `AuditRecord` | An immutable record capturing actor, action, target entity, before/after states, and timestamp. |
-| `AuditWriter` | An injectable interface that emits `AuditRecord` instances as structured log events (`event_type: AUDIT_*`). No built-in persistence implementations — persistence is the consumer's responsibility. |
+| `AuditWriter` | An injectable interface that emits `AuditRecord` instances as structured log events (`eventType: AUDIT_*`). No built-in persistence implementations — persistence is the consumer's responsibility. |
 | `TraceContext` | A value object carrying W3C TraceContext headers for cross-service propagation. |
 | `HealthContributor` | A CDI interface that services implement to add custom health checks, composed into the `/q/health` response. |
 | `ExceptionReporter` | An injectable service that receives exceptions, enriches them with `ObservabilityContext`, de-duplicates by fingerprint, and forwards to the configured tracking backend. |
@@ -272,7 +272,7 @@ Emitted JSON:
 ```json
 {
   "@timestamp": "2026-03-09T14:32:01.123Z",
-  "event_type": "ORDER_COMPLETED",
+   "eventType": "ORDER_COMPLETED",
   "order_id": "ORD-9912",
   "order_value": 349.90,
   "currency": "BRL",

@@ -18,7 +18,7 @@
 
 | Field | Type | Description | Example |
 | --- | --- | --- | --- |
-| `event_type` | `string` | Machine-readable event name | `ORDER_COMPLETED`, `LOGIN_FAILED` |
+| `eventType` | `string` | Machine-readable event name | `ORDER_COMPLETED`, `LOGIN_FAILED` |
 | `message` | `string` | Human-readable event description | `"Order saved successfully"` |
 | `severity` | `string` | Log level | `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL` |
 | `exception_class` | `string` | Fully qualified exception class name | `java.lang.NullPointerException` |

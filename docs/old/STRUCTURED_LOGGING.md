@@ -87,7 +87,7 @@ Every log event must carry the following fields. The library injects the context
 | `@timestamp` | System clock (UTC) | ✅ |
 | `severity` | Log level at call site | ✅ |
 | `message` | Developer-provided | ❌ |
-| `event_type` | Developer-provided | ❌ |
+| `eventType` | Developer-provided | ❌ |
 | `request_id` | JAX-RS filter | ✅ |
 | `trace_id` | OpenTelemetry | ✅ |
 | `user_id` | CDI interceptor (if authenticated) | ✅ |
