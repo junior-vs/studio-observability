@@ -409,31 +409,15 @@ LogSistematico
 - [ ] Definir processo mínimo de KEDB e runbooks vinculados ao `errorCode`.
 
 
----
-
-## 9. Questões em Aberto
-
-**Resolvidas:**
-
-1. ✅ Semântica de identidade — `userId` apenas; `visitorToken` fora do escopo v1.
-2. ✅ Estratégia de sampling — `always_on` na aplicação; tail-based no OTel Collector.
-3. ✅ Imutabilidade do registro de auditoria — append-only stream; sem persistência na biblioteca em v1.
-4. ✅ Padrão de nomes de campos — camelCase canônico definido em `FIELD_NAMES.md`; consistente entre os três módulos.
-5. ✅ PII handling — opt-out automático por nome de chave via `SanitizadorDados`; campos que exigem redação completa devem ser omitidos antes de `.comDetalhe()`.
-6. ✅ Separação audit vs. log — streams separados; log de auditoria é padrão distinto; implementação futura em v0.3.
-
-**Em aberto:**
-
-7. 🟡 Escopo de frameworks para jobs em background — quais schedulers (Quartz, Quarkus Scheduler) são suportados em v1? O `LoggingInterceptor` se comporta corretamente sem contexto HTTP em todos eles?
-8. 🟡 Algoritmo de fingerprint para de-duplicação de exceções — considerar apenas o nome da classe e os N primeiros frames de código próprio, ou incluir a mensagem da exceção quando ela contiver identificadores estáveis?
+--- 
 
 ---
 
-## 10. Referências
+## Referências
 
-**Fundamentos do padrão:**
-- Microsoft Research (2010) — *Characterizing Logging Practices in Open-Source Software*
-- Anton Chuvakin — *Security Information and Event Management*
+**Fundamentos deste padrão:**
+- Microsoft Research (2010) — *Characterizing Logging Practices in Open-Source Software* — estudo empírico sobre padrões de inserção de logs
+- Anton Chuvakin — *Security Information and Event Management* — categorização de eventos críticos de segurança
 - Chris Richardson — [Application Logging](https://microservices.io/patterns/observability/application-logging.html) — microservices.io
 - Chris Richardson — [Distributed Tracing](https://microservices.io/patterns/observability/distributed-tracing.html) — microservices.io
 - Chris Richardson — [Exception Tracking](https://microservices.io/patterns/observability/exception-tracking.html) — microservices.io
@@ -441,62 +425,28 @@ LogSistematico
 - Iluwatar — [java-design-patterns: microservices-log-aggregation](https://github.com/iluwatar/java-design-patterns/tree/master/microservices-log-aggregation)
 - Iluwatar — [java-design-patterns: microservices-distributed-tracing](https://github.com/iluwatar/java-design-patterns/tree/master/microservices-distributed-tracing)
 
-**Especificações e padrões:**
+**Observabilidade e SRE:**
 - [OpenTelemetry Specification](https://opentelemetry.io/docs/specs/)
 - [W3C TraceContext Recommendation](https://www.w3.org/TR/trace-context/)
 - [Quarkus 3.x — OpenTelemetry Guide](https://quarkus.io/guides/opentelemetry)
 - [Elasticsearch Common Schema (ECS)](https://www.elastic.co/guide/en/ecs/current/)
+- [Google SRE Book — Monitoring Distributed Systems](https://sre.google/sre-book/monitoring-distributed-systems/) — capítulo fundacional sobre alertas baseados em sintomas
+- [Dapper — Large-Scale Distributed Systems Tracing](https://research.google/pubs/pub36356/) — paper seminal do Google sobre tracing distribuído
+- Cindy Sridharan — [Monitoring and Observability](https://copyconstruct.medium.com/monitoring-and-observability-8417d1952e1c) — distinção entre monitoramento e observabilidade
 
----
+**Livros:**
+- Charity Majors, Liz Fong-Jones, George Miranda — *Observability Engineering* (O'Reilly, 2022) — observabilidade moderna e debugging por alta cardinalidade
+- Betsy Beyer, Chris Jones et al. — *Site Reliability Engineering* (Google, 2016) — práticas SRE, especialmente os capítulos de monitoramento e alertas
+- Cindy Sridharan — *Distributed Systems Observability* (O'Reilly, 2018) — guia conciso dos três pilares
+- James Turnbull — *The Art of Monitoring* (O'Reilly, 2018) — guia prático de infraestrutura de monitoramento
 
-## Apêndice — Conceitos do VISION Original Fora do Escopo Atual
+**Ferramentas:**
+- [Prometheus](https://prometheus.io/) — coleta de métricas e alertas
+- [Grafana](https://grafana.com/) — dashboards e visualização
+- [Grafana Loki](https://grafana.com/oss/loki/) — armazenamento e consulta de logs
+- [Elasticsearch + Kibana (ELK)](https://www.elastic.co/) — indexação e busca de logs estruturados
+- [Jaeger](https://www.jaegertracing.io/) — backend de tracing distribuído open-source
+- [Grafana Tempo](https://grafana.com/oss/tempo/) — armazenamento de traces escalável e de baixo custo
+- [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/) — pipeline de telemetria agnóstico de vendor
+- [Datadog](https://www.datadoghq.com/) — plataforma de observabilidade gerenciada 
 
-Os conceitos abaixo estavam presentes na versão 0.1 do documento e foram removidos por conflitarem com decisões já tomadas no projeto ou por estarem além do escopo definido. Ficam registrados aqui para referência.
-
----
-
-**Health Check API**
-
-O VISION 0.1 incluía uma `HealthContributor` interface e um endpoint `/q/health` pré-construído como entregável da fase Foundation (v0.1). O Quarkus já fornece SmallRye Health com essa capacidade; uma reimplementação pela biblioteca criaria sobreposição sem valor diferencial. Não há nenhum documento de implementação no projeto que cubra essa capacidade. Health Check permanece fora do escopo.
-
----
-
-**Bean de contexto dedicado `@RequestScoped` com `hostname` e `pid`**
-
-O VISION 0.1 propunha um bean `@RequestScoped` dedicado como portador central de `traceId`, `spanId`, `requestId`, `userId`, `hostname` e `pid`. O projeto usa `GerenciadorContextoLog` (`@ApplicationScoped`) + MDC. A decisão de usar `@ApplicationScoped` em vez de `@RequestScoped` é intencional — o MDC é o mecanismo de propagação thread-local, e criar um bean de escopo de requisição para carregar os mesmos dados seria redundante. Os campos `hostname` e `pid` não estão nos documentos de implementação e não fazem parte do contrato de campos canônicos atual.
-
----
-
-**`FieldNameAdapter` com dialetos ECS, Datadog e Graylog**
-
-O VISION 0.1 propunha uma interface `FieldNameAdapter` com implementações para remapear nomes de campos canônicos para convenções de plataforma específicas (`ecs`, `datadog`, `graylog`). A Open Question #4 foi resolvida com camelCase canônico fixo, sem adaptador de dialetos. Introduzir dialetos múltiplos fragmentaria as queries e contradiria o princípio de consistência de nomes de campos. Não há nenhum documento de implementação que mencione essa abstração.
-
----
-
-**Abstração de logger estruturado alternativa**
-
-O VISION 0.1 definia uma API de logger estruturado alternativa como camada primária de emissão de eventos. O projeto usa `LogSistematico` (DSL com Fluent Interface e `sealed interfaces`). São dois modelos de API diferentes; `LogSistematico` já está documentado e implementado com validação em tempo de compilação. A abstração alternativa não será introduzida.
-
----
-
-**Taylor Scott / SolidusConf 2020 como fonte primária do 5W**
-
-O VISION 0.1 atribuía o framework 5W a Taylor Scott (SolidusConf 2020). O padrão conceitual do projeto atribui o 5W ao jornalismo e à Análise de Causa Raiz (RCA), sem citação a essa palestra. A referência foi removida do projeto nos documentos anteriores e não é fonte bibliográfica do padrão.
-
----
-
-**`Application Metrics` e `Health Check API` de Chris Richardson como referências**
-
-O VISION 0.1 incluía os padrões Application Metrics e Health Check API de microservices.io na lista de referências. Nenhum dos dois é citado nos documentos de implementação. Foram removidos para refletir o escopo real do projeto.
-
----
-
-**Versão do Quarkus (`3.20` vs `3.27`)**
-
-O VISION 0.1 referenciava `Quarkus 3.20` em múltiplos lugares. A versão correta em uso nos documentos de implementação é `Quarkus 3.27`.
-
----
-
-**`Out of Scope` excluindo Jakarta EE**
-
-O VISION 0.1 declarava "Non-Quarkus frameworks are not in scope for v1". O projeto inclui explicitamente `lib-logging-slf4j` para Jakarta EE (Wildfly, TomEE, Payara, OpenLiberty) como um dos três artefatos principais.
