@@ -1,8 +1,10 @@
-package br.com.vsjr.labs.log.dsl;
+package br.com.vsjr.labs.observability.dsl;
 
 import org.jboss.logmanager.ExtHandler;
 import org.jboss.logmanager.ExtLogRecord;
 import org.junit.jupiter.api.Test;
+
+import br.com.vsjr.labs.observability.core.LogSistematico;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;

@@ -1,8 +1,8 @@
 package br.com.vsjr.labs.exemple.context;
 
-import br.com.vsjr.labs.log.context.EnriquecedorContexto;
-import br.com.vsjr.labs.log.context.EnriquecedorLocalizacao;
-import br.com.vsjr.labs.log.context.EnriquecedorUsuario;
+import br.com.vsjr.labs.observability.context.enriquecedor.logs.EnriquecedorContexto;
+import br.com.vsjr.labs.observability.context.enriquecedor.logs.LocalizacaoEnriquecedorContexto;
+import br.com.vsjr.labs.observability.context.enriquecedor.logs.UsuarioEnriquecedorContexto;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.interceptor.InvocationContext;
 import org.jboss.logging.MDC;
@@ -15,8 +15,8 @@ import java.util.Set;
  *
  * <p>Demonstra como estender o pipeline de enriquecimento do MDC com contexto
  * de domínio, complementando os enriquecedores obrigatórios de infraestrutura
- * ({@link EnriquecedorLocalizacao} com prioridade {@code 10} e
- * {@link EnriquecedorUsuario} com prioridade {@code 20}).</p>
+ * ({@link LocalizacaoEnriquecedorContexto} com prioridade {@code 10} e
+ * {@link UsuarioEnriquecedorContexto} com prioridade {@code 20}).</p>
  *
  * <p>Campo adicionado ao MDC:</p>
  * <ul>
@@ -29,12 +29,12 @@ import java.util.Set;
  * este enriquecedor for ativado.</p>
  *
  * <p>A chave {@code operacao.nome} é removida automaticamente pelo
- * {@link br.com.vsjr.labs.log.context.GerenciadorContextoLog#limparEnriquecimento()}
+ * {@link br.com.vsjr.labs.observability.context.GerenciadorContextoLog#limparEnriquecimento()}
  * ao término do método interceptado — sem risco de contaminação entre threads.</p>
  *
  * <p><b>Registro automático:</b> como bean {@code @ApplicationScoped}, é descoberto
  * pelo CDI e incorporado ao pipeline sem nenhuma alteração no
- * {@link br.com.vsjr.labs.log.context.GerenciadorContextoLog}.</p>
+ * {@link br.com.vsjr.labs.observability.context.GerenciadorContextoLog}.</p>
  */
 @ApplicationScoped
 public class EnriquecedorContextoOperacao implements EnriquecedorContexto {

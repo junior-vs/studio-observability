@@ -1,5 +1,7 @@
-package br.com.vsjr.labs.log.dsl;
+package br.com.vsjr.labs.observability.core;
 
+
+import br.com.vsjr.labs.observability.utils.SanitizadorDados;
 
 /**
  * Define as etapas da Fluent Interface da DSL de logging sistemático.
@@ -45,7 +47,7 @@ public final class LogEtapas {
 
     /**
      * Etapa 2 — Where preenchido.
-     * O log pode ser emitido ou enriquecido com qualquer combinação de
+     * O observability pode ser emitido ou enriquecido com qualquer combinação de
      * dimensões opcionais antes do terminador.
      */
     public sealed interface EtapaOpcional permits LogSistematico {
@@ -68,11 +70,11 @@ public final class LogEtapas {
         EtapaOpcional como(String canal);
 
         /**
-         * Adiciona um detalhe extra tipado ao log.
+         * Adiciona um detalhe extra tipado ao observability.
          * <p>
          * Contexto extra em chave-valor.
          * Valores de chaves sensíveis são mascarados automaticamente pelo
-         * {@link br.com.vsjr.labs.log.context.SanitizadorDados}.
+         * {@link SanitizadorDados}.
          * Pode ser chamado múltiplas vezes — a ordem de inserção é preservada.
          *
          * @param chave nome do campo no JSON de saída

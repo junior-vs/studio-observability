@@ -1,4 +1,4 @@
-package br.com.vsjr.labs.log.context;
+package br.com.vsjr.labs.observability.utils;
 
 import java.util.Set;
 
@@ -35,7 +35,7 @@ public final class SanitizadorDados {
      *
      * @param chave nome do campo
      * @param valor valor original
-     * @return valor seguro para registro em log
+     * @return valor seguro para registro em observability
      */
     public static Object sanitizar(String chave, Object valor) {
         if (valor == null) return null;

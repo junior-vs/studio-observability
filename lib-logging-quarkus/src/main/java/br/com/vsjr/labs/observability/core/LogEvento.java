@@ -1,10 +1,10 @@
-package br.com.vsjr.labs.log.core;
+package br.com.vsjr.labs.observability.core;
 
 import java.util.Collections;
 import java.util.Map;
 
 /**
- * Representação imutável de um evento de log segundo o framework 5W1H.
+ * Representação imutável de um evento de observability segundo o framework 5W1H.
  *
  * <p>Mapeamento das dimensões:</p>
  * <ul>
@@ -17,7 +17,7 @@ import java.util.Map;
  * </ul>
  *
  * <p>As dimensões <b>Who</b> (userId) e <b>When</b> (timestamp) são preenchidas
- * automaticamente: Who pelo {@link br.com.vsjr.labs.log.filtro.LogContextoFiltro}
+ * automaticamente: Who pelo {@link br.com.vsjr.labs.observability.filtro.LogContextoFiltro}
  * via MDC, e When pelo Quarkus no momento da emissão.</p>
  *
  * <p>Exemplo de saída JSON completa:</p>

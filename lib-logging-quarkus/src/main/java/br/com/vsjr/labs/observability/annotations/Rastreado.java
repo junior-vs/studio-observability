@@ -1,5 +1,6 @@
-package br.com.vsjr.labs.log.annotations;
+package br.com.vsjr.labs.observability.annotations;
 
+import br.com.vsjr.labs.observability.interceptor.TracingInterceptor;
 import jakarta.interceptor.InterceptorBinding;
 
 import java.lang.annotation.*;
@@ -7,7 +8,7 @@ import java.lang.annotation.*;
 /**
  * Ativa rastreamento distribuído para um bean ou método CDI.
  *
- * <p>Quando aplicada, o {@link br.com.vsjr.labs.log.interceptor.RastreamentoInterceptor}
+ * <p>Quando aplicada, o {@link TracingInterceptor}
  * cria um Child Span OTel para cada invocação e atualiza o MDC com o {@code spanId}
  * do filho — garantindo que os logs emitidos durante a execução referenciem
  * o span correto no Jaeger/Grafana Tempo.</p>
@@ -15,7 +16,7 @@ import java.lang.annotation.*;
  * <p>Pode ser combinada com {@link Logged} para obter rastreamento distribuído
  * e métricas Micrometer simultaneamente. Nesse caso, {@code @Rastreado} executa
  * primeiro ({@code Priority APPLICATION - 10}) e o {@code spanId} do filho já
- * está no MDC quando o {@link br.com.vsjr.labs.log.interceptor.LogInterceptor}
+ * está no MDC quando o {@link br.com.vsjr.labs.observability.interceptor.LogInterceptor}
  * registrar a localização do método.</p>
  *
  * <pre>{@code

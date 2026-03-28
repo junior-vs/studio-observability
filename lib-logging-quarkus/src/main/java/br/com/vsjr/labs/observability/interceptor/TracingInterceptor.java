@@ -1,10 +1,10 @@
-package br.com.vsjr.labs.log.interceptor;
+package br.com.vsjr.labs.observability.interceptor;
 
 import org.jboss.logging.MDC;
 
-import br.com.vsjr.labs.log.annotations.Rastreado;
-import br.com.vsjr.labs.log.dsl.LogSistematico;
-import br.com.vsjr.labs.log.tracing.GerenciadorRastreamento;
+import br.com.vsjr.labs.observability.annotations.Rastreado;
+import br.com.vsjr.labs.observability.core.LogSistematico;
+import br.com.vsjr.labs.observability.context.GerenciadorTracing;
 import jakarta.annotation.Priority;
 import jakarta.interceptor.AroundInvoke;
 import jakarta.interceptor.Interceptor;
@@ -33,12 +33,12 @@ import jakarta.interceptor.InvocationContext;
 @Rastreado
 @Interceptor
 @Priority(Interceptor.Priority.APPLICATION - 10)
-public class RastreamentoInterceptor {
+public class TracingInterceptor {
 
 
-    GerenciadorRastreamento gerenciador;
+    GerenciadorTracing gerenciador;
 
-    public RastreamentoInterceptor(GerenciadorRastreamento gerenciador) {
+    public TracingInterceptor(GerenciadorTracing gerenciador) {
         this.gerenciador = gerenciador;
     }
 
@@ -71,7 +71,7 @@ public class RastreamentoInterceptor {
                 gerenciador.encerrar(contextoSpan, spanIdPai);
             } catch (Exception otelEx) {
                 LogSistematico.registrando("Falha ao encerrar span OTel")
-                        .em(RastreamentoInterceptor.class, "rastrear")
+                        .em(TracingInterceptor.class, "rastrear")
                         .porque("Exceção durante encerramento de span OTel")
                         .como("Interceptor de rastreamento")
                         .erro(otelEx);

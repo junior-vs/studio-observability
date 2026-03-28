@@ -1,4 +1,4 @@
-package br.com.vsjr.labs.log.tracing;
+package br.com.vsjr.labs.observability.context.enriquecedor.tracing;
 
 import io.opentelemetry.api.trace.Span;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -21,11 +21,11 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
  * </ul>
  */
 @ApplicationScoped
-public class EnriquecedorMetadados implements EnriquecedorSpan {
+public class MetadadosEnriquecedorTracing implements EnriquecedorTracing {
 
     String applicationName;
 
-    public EnriquecedorMetadados(
+    public MetadadosEnriquecedorTracing(
             @ConfigProperty(name = "quarkus.application.name", defaultValue = "servico-desconhecido") String applicationName) {
         this.applicationName = applicationName;
     }

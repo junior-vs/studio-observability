@@ -1,8 +1,8 @@
 package br.com.vsjr.labs.exemple.rest;
 
-import br.com.vsjr.labs.log.annotations.Logged;
-import br.com.vsjr.labs.log.annotations.Rastreado;
-import br.com.vsjr.labs.log.dsl.LogSistematico;
+import br.com.vsjr.labs.observability.annotations.Logged;
+import br.com.vsjr.labs.observability.annotations.Rastreado;
+import br.com.vsjr.labs.observability.core.LogSistematico;
 import jakarta.enterprise.context.ApplicationScoped;
 
 /**
@@ -89,7 +89,7 @@ public class HelloService {
      * @param a dividendo
      * @param b divisor
      * @return resultado da divisão, ou {@code 0.0} em caso de {@link ArithmeticException}
-     * @throws Exception relançada após log em caso de erro inesperado
+     * @throws Exception relançada após observability em caso de erro inesperado
      */
     public Double divide(Double a, Double b) throws Exception {
         try {

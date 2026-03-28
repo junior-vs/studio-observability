@@ -1,8 +1,8 @@
-package br.com.vsjr.labs.log.interceptor;
+package br.com.vsjr.labs.observability.interceptor;
 
 
-import br.com.vsjr.labs.log.annotations.Logged;
-import br.com.vsjr.labs.log.context.GerenciadorContextoLog;
+import br.com.vsjr.labs.observability.annotations.Logged;
+import br.com.vsjr.labs.observability.context.GerenciadorContextoLog;
 import jakarta.annotation.Priority;
 import jakarta.interceptor.AroundInvoke;
 import jakarta.interceptor.Interceptor;
@@ -21,7 +21,7 @@ import jakarta.interceptor.InvocationContext;
  * </ol>
  *
  * <p>Os campos de correlação da requisição ({@code traceId}, {@code userId})
- * são responsabilidade do {@link br.com.vsjr.labs.log.filtro.LogContextoFiltro} e
+ * são responsabilidade do {@link br.com.vsjr.labs.observability.filtro.LogContextoFiltro} e
  * permanecem intactos durante toda a execução da requisição.</p>
  *
  * <p><b>Métricas</u>:</b> serão implementadas em módulo separado, mantendo

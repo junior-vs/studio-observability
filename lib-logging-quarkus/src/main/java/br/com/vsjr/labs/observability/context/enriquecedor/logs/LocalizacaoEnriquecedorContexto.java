@@ -1,4 +1,4 @@
-package br.com.vsjr.labs.log.context;
+package br.com.vsjr.labs.observability.context.enriquecedor.logs;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.interceptor.InvocationContext;
@@ -19,7 +19,7 @@ import java.util.Set;
  * </ul>
  */
 @ApplicationScoped
-public class EnriquecedorLocalizacao implements EnriquecedorContexto {
+public class LocalizacaoEnriquecedorContexto implements EnriquecedorContexto {
 
     @Override
     public void enriquecer(InvocationContext contexto) {

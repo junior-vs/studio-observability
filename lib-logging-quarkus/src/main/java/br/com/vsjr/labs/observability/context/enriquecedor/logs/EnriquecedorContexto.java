@@ -1,5 +1,7 @@
-package br.com.vsjr.labs.log.context;
+package br.com.vsjr.labs.observability.context.enriquecedor.logs;
 
+import br.com.vsjr.labs.observability.context.GerenciadorContextoLog;
+import br.com.vsjr.labs.observability.context.enriquecedor.Priorizavel;
 import jakarta.interceptor.InvocationContext;
 
 import java.util.Set;
@@ -36,7 +38,7 @@ import java.util.Set;
  * }
  * }</pre>
  */
-public interface EnriquecedorContexto {
+public interface EnriquecedorContexto extends Priorizavel {
 
     /**
      * Enriquece o MDC com campos adicionais para a invocação interceptada.
@@ -52,12 +54,4 @@ public interface EnriquecedorContexto {
      * após a execução do método interceptado.</p>
      */
     Set<String> chavesMdc();
-
-    /**
-     * Ordem de execução na cadeia — valor menor executa primeiro.
-     * Padrão: {@link Integer#MAX_VALUE}.
-     */
-    default int prioridade() {
-        return Integer.MAX_VALUE;
-    }
 }

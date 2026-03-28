@@ -1,7 +1,8 @@
-package br.com.vsjr.labs.log.tracing;
+package br.com.vsjr.labs.observability.context;
 
 import java.util.Comparator;
 
+import br.com.vsjr.labs.observability.context.enriquecedor.tracing.EnriquecedorTracing;
 import org.jboss.logging.MDC;
 
 import io.opentelemetry.api.OpenTelemetry;
@@ -26,7 +27,7 @@ import jakarta.interceptor.InvocationContext;
  *   <li>Marcar spans como {@code ERROR} em caso de exceção</li>
  * </ul>
  *
- * <p>Separado do {@link br.com.vsjr.labs.log.context.GerenciadorContextoLog}
+ * <p>Separado do {@link br.com.vsjr.labs.observability.context.GerenciadorContextoLog}
  * para manter a separação de responsabilidades: este bean cuida do ciclo de
  * vida do span OTel; o outro cuida do MDC de correlação da requisição HTTP.</p>
  *
@@ -34,23 +35,23 @@ import jakarta.interceptor.InvocationContext;
  * fornecido pelo {@code quarkus-opentelemetry} — o {@code Tracer} em si
  * não é um bean CDI direto.</p>
  *
- * <p>O pipeline de enriquecimento executa cada {@link EnriquecedorSpan} em
- * ordem crescente de {@link EnriquecedorSpan#prioridade()}.
+ * <p>O pipeline de enriquecimento executa cada {@link EnriquecedorTracing} em
+ * ordem crescente de {@link EnriquecedorTracing#prioridade()}.
  * Todos os enriquecedores são executados (sem short-circuit funcional).
  * Novos enriquecedores são descobertos automaticamente pelo CDI — sem
  * alteração nesta classe.</p>
  */
 @ApplicationScoped
-public class GerenciadorRastreamento {
+public class GerenciadorTracing {
 
     Tracer tracer;
-    Instance<EnriquecedorSpan> enriquecedores;
+    Instance<EnriquecedorTracing> enriquecedores;
 
     private static final String CAMPO_TRACE_ID = "traceId";
     private static final String CAMPO_SPAN_ID = "spanId";
 
-    public GerenciadorRastreamento(OpenTelemetry openTelemetry, Instance<EnriquecedorSpan> enriquecedores) {
-        this.tracer = openTelemetry.getTracer(GerenciadorRastreamento.class.getName());
+    public GerenciadorTracing(OpenTelemetry openTelemetry, Instance<EnriquecedorTracing> enriquecedores) {
+        this.tracer = openTelemetry.getTracer(GerenciadorTracing.class.getName());
         this.enriquecedores = enriquecedores;
     }
 
@@ -95,7 +96,7 @@ public class GerenciadorRastreamento {
         MDC.put(CAMPO_SPAN_ID, span.getSpanContext().getSpanId());
 
         enriquecedores.stream()
-                .sorted(Comparator.comparingInt(EnriquecedorSpan::prioridade))
+                .sorted(Comparator.comparingInt(EnriquecedorTracing::prioridade))
                 .forEach(e -> e.enriquecer(span, contexto));
 
         return new ContextoSpan(span, scope);

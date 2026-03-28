@@ -1,5 +1,7 @@
-package br.com.vsjr.labs.log.tracing;
+package br.com.vsjr.labs.observability.context.enriquecedor.tracing;
 
+import br.com.vsjr.labs.observability.context.GerenciadorTracing;
+import br.com.vsjr.labs.observability.context.enriquecedor.Priorizavel;
 import io.opentelemetry.api.trace.Span;
 import jakarta.interceptor.InvocationContext;
 
@@ -7,7 +9,7 @@ import jakarta.interceptor.InvocationContext;
  * Contrato do Pipeline de Enriquecimento de span.
  *
  * <p>Cada implementação contribui com atributos OTel ao span no momento da criação.
- * O {@link GerenciadorRastreamento} executa todos os enriquecedores descobertos via
+ * O {@link GerenciadorTracing} executa todos os enriquecedores descobertos via
  * CDI em ordem crescente de {@link #prioridade()}, sem interrupção funcional
  * da execução da cadeia.</p>
  *
@@ -40,7 +42,7 @@ import jakarta.interceptor.InvocationContext;
  * }
  * }</pre>
  */
-public interface EnriquecedorSpan {
+public interface EnriquecedorTracing extends Priorizavel {
 
     /**
      * Enriquece o span com atributos OTel.
@@ -53,18 +55,4 @@ public interface EnriquecedorSpan {
      * @param contexto contexto CDI da invocação; expõe método, parâmetros e target bean
      */
     void enriquecer(Span span, InvocationContext contexto);
-
-    /**
-     * Prioridade de execução na cadeia: menor valor executa primeiro.
-     *
-     * <ul>
-     *   <li>Enriquecedores obrigatórios (metadados técnicos, identidade): {@code 10–50}</li>
-     *   <li>Enriquecedores opcionais de negócio: {@code 100+}</li>
-     * </ul>
-     *
-     * @return prioridade (padrão: {@link Integer#MAX_VALUE}, executado por último)
-     */
-    default int prioridade() {
-        return Integer.MAX_VALUE;
-    }
 }

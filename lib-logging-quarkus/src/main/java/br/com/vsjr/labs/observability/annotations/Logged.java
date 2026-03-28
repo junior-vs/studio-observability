@@ -1,4 +1,4 @@
-package br.com.vsjr.labs.log.annotations;
+package br.com.vsjr.labs.observability.annotations;
 
 import jakarta.interceptor.InterceptorBinding;
 
@@ -7,7 +7,7 @@ import java.lang.annotation.*;
 /**
  * Ativa interceptação automática de logging para um bean ou método CDI.
  *
- * <p>Quando aplicada, o {@link br.com.vsjr.labs.log.interceptor.LogInterceptor}
+ * <p>Quando aplicada, o {@link br.com.vsjr.labs.observability.interceptor.LogInterceptor}
  * injeta no MDC: {@code userId}, {@code traceId}, {@code spanId}, {@code classe}
  * e {@code metodo}. Ao término, registra a duração da execução como métrica
  * Micrometer exposta em {@code /q/metrics}.</p>

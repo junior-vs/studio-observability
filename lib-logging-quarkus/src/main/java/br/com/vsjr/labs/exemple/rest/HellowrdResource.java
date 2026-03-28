@@ -1,8 +1,8 @@
 package br.com.vsjr.labs.exemple.rest;
 
-import br.com.vsjr.labs.log.annotations.Logged;
-import br.com.vsjr.labs.log.annotations.Rastreado;
-import br.com.vsjr.labs.log.dsl.LogSistematico;
+import br.com.vsjr.labs.observability.annotations.Logged;
+import br.com.vsjr.labs.observability.annotations.Rastreado;
+import br.com.vsjr.labs.observability.core.LogSistematico;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Response;
 
@@ -58,8 +58,8 @@ public class HellowrdResource {
      * </ul>
      *
      * @param pedidoId identificador do pedido
-     * @param token    token de autorização — mascarado no log
-     * @param cpf      CPF do solicitante — protegido no log
+     * @param token    token de autorização — mascarado no observability
+     * @param cpf      CPF do solicitante — protegido no observability
      */
     @Logged
     @Rastreado
@@ -85,7 +85,7 @@ public class HellowrdResource {
 
     /**
      * Método sem {@code @Logged} nem {@code @Rastreado} — demonstra que o controle
-     * é por método. O log é emitido diretamente via DSL, sem interceptação CDI.
+     * é por método. O observability é emitido diretamente via DSL, sem interceptação CDI.
      *
      * @param a dividendo
      * @param b divisor

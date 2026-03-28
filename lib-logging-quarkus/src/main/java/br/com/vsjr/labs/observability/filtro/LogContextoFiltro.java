@@ -1,10 +1,10 @@
-package br.com.vsjr.labs.log.filtro;
+package br.com.vsjr.labs.observability.filtro;
 
 import java.security.Principal;
 
-import br.com.vsjr.labs.log.context.GerenciadorContextoLog;
-import br.com.vsjr.labs.log.dsl.LogSistematico;
-import br.com.vsjr.labs.log.tracing.GerenciadorRastreamento;
+import br.com.vsjr.labs.observability.context.GerenciadorContextoLog;
+import br.com.vsjr.labs.observability.context.GerenciadorTracing;
+import br.com.vsjr.labs.observability.core.LogSistematico;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.container.ContainerResponseContext;
@@ -23,7 +23,7 @@ import jakarta.ws.rs.ext.Provider;
  *   <li><b>Request</b>: extrai o usuário autenticado, inicializa o MDC com
  *       {@code userId} e {@code applicationName} via {@link GerenciadorContextoLog}, e
  *       sincroniza {@code traceId} e {@code spanId} do span OTel ativo via
- *       {@link GerenciadorRastreamento} — mantendo as responsabilidades separadas.</li>
+ *       {@link GerenciadorTracing} — mantendo as responsabilidades separadas.</li>
  *   <li><b>Response</b>: limpa o MDC — obrigatório para evitar vazamento de
  *       contexto entre requisições no pool de threads do Vert.x.</li>
  * </ol>
@@ -37,12 +37,12 @@ public class LogContextoFiltro implements ContainerRequestFilter, ContainerRespo
 
 
     GerenciadorContextoLog gerenciador;
-    GerenciadorRastreamento gerenciadorRastreamento;
+    GerenciadorTracing gerenciadorTracing;
 
     public LogContextoFiltro(GerenciadorContextoLog gerenciador,
-                              GerenciadorRastreamento gerenciadorRastreamento) {
+                              GerenciadorTracing gerenciadorTracing) {
         this.gerenciador = gerenciador;
-        this.gerenciadorRastreamento = gerenciadorRastreamento;
+        this.gerenciadorTracing = gerenciadorTracing;
     }
 
     /**
@@ -52,10 +52,10 @@ public class LogContextoFiltro implements ContainerRequestFilter, ContainerRespo
     public void filter(ContainerRequestContext requestContext) {
         var userId = resolverUsuario(requestContext);
         var contexto = gerenciador.inicializar(userId);
-        gerenciadorRastreamento.sincronizarMdcRequisicao();
+        gerenciadorTracing.sincronizarMdcRequisicao();
 
         LogSistematico
-                .registrando("Contexto de log inicializado")
+                .registrando("Contexto de observability inicializado")
                 .em(LogContextoFiltro.class, "filter")
                 .comDetalhe("userId", contexto.userId())
                 .debug();

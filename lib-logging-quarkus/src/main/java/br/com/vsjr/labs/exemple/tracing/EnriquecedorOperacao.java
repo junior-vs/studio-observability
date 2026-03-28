@@ -1,6 +1,6 @@
 package br.com.vsjr.labs.exemple.tracing;
 
-import br.com.vsjr.labs.log.tracing.EnriquecedorSpan;
+import br.com.vsjr.labs.observability.context.enriquecedor.tracing.EnriquecedorTracing;
 import io.opentelemetry.api.trace.Span;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.interceptor.InvocationContext;
@@ -27,7 +27,7 @@ import jakarta.interceptor.InvocationContext;
  * }</pre>
  */
 @ApplicationScoped
-public class EnriquecedorOperacao implements EnriquecedorSpan {
+public class EnriquecedorOperacao implements EnriquecedorTracing {
 
     @Override
     public void enriquecer(Span span, InvocationContext contexto) {

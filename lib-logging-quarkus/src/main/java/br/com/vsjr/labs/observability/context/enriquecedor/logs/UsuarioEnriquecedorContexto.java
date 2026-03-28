@@ -1,5 +1,6 @@
-package br.com.vsjr.labs.log.context;
+package br.com.vsjr.labs.observability.context.enriquecedor.logs;
 
+import br.com.vsjr.labs.observability.context.GerenciadorContextoLog;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.interceptor.InvocationContext;
@@ -11,7 +12,7 @@ import java.util.stream.Collectors;
 /**
  * Enriquecedor opcional — perfis do usuário autenticado.
  *
- * <p>Prioridade {@code 20}: executa após {@link EnriquecedorLocalizacao}.</p>
+ * <p>Prioridade {@code 20}: executa após {@link LocalizacaoEnriquecedorContexto}.</p>
  *
  * <p>Campo adicionado:</p>
  * <ul>
@@ -21,17 +22,17 @@ import java.util.stream.Collectors;
  *
  * <p>Complementa o {@code userId} registrado pelo {@link GerenciadorContextoLog}
  * no nível da requisição HTTP, adicionando a dimensão de <em>autorização</em>
- * ao log: não apenas quem executou, mas com quais permissões.</p>
+ * ao observability: não apenas quem executou, mas com quais permissões.</p>
  *
  * <p>A injeção de {@link SecurityIdentity} é segura mesmo sem extensão de
  * segurança configurada — o Quarkus provê identidade anônima, nunca {@code null}.</p>
  */
 @ApplicationScoped
-public class EnriquecedorUsuario implements EnriquecedorContexto {
+public class UsuarioEnriquecedorContexto implements EnriquecedorContexto {
 
     SecurityIdentity identidade;
 
-    public EnriquecedorUsuario(SecurityIdentity identidade) {
+    public UsuarioEnriquecedorContexto(SecurityIdentity identidade) {
         this.identidade = identidade;
     }
 

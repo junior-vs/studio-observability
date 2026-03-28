@@ -1,4 +1,4 @@
-package br.com.vsjr.labs.log.tracing;
+package br.com.vsjr.labs.observability.context.enriquecedor.tracing;
 
 import io.opentelemetry.api.trace.Span;
 import io.quarkus.security.identity.SecurityIdentity;
@@ -8,7 +8,7 @@ import jakarta.interceptor.InvocationContext;
 /**
  * Enriquecedor opcional — identidade do usuário autenticado.
  *
- * <p>Prioridade {@code 20}: executa após {@link EnriquecedorMetadados}.</p>
+ * <p>Prioridade {@code 20}: executa após {@link MetadadosEnriquecedorTracing}.</p>
  *
  * <p>Atributos adicionados (OTel semantic conventions):</p>
  * <ul>
@@ -20,11 +20,11 @@ import jakarta.interceptor.InvocationContext;
  * configurada — o Quarkus provê uma identidade anônima nesse caso, nunca {@code null}.</p>
  */
 @ApplicationScoped
-public class EnriquecedorIdentidade implements EnriquecedorSpan {
+public class IdentidadeEnriquecedorTracing implements EnriquecedorTracing {
 
     SecurityIdentity identidade;
 
-    public EnriquecedorIdentidade(SecurityIdentity identidade) {
+    public IdentidadeEnriquecedorTracing(SecurityIdentity identidade) {
         this.identidade = identidade;
     }
 

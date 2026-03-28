@@ -1,7 +1,7 @@
-package br.com.vsjr.labs.log.dsl;
+package br.com.vsjr.labs.observability.core;
 
 
-import br.com.vsjr.labs.log.context.SanitizadorDados;
+import br.com.vsjr.labs.observability.utils.SanitizadorDados;
 
 import org.jboss.logging.Logger;
 import org.jboss.logging.MDC;
@@ -56,7 +56,7 @@ public final class LogSistematico implements LogEtapas.EtapaOnde, LogEtapas.Etap
     // ── Ponto de entrada — What ───────────────────────────────────────────────
 
     /**
-     * Inicia a construção do log com a descrição do evento (dimensão <em>What</em>).
+     * Inicia a construção do observability com a descrição do evento (dimensão <em>What</em>).
      *
      * @param evento o que está acontecendo — ex: "Pedido criado", "Login falhou"
      * @return etapa seguinte, que exige a declaração do Where
@@ -130,7 +130,7 @@ public final class LogSistematico implements LogEtapas.EtapaOnde, LogEtapas.Etap
     // ── Emissão ───────────────────────────────────────────────────────────────
 
     /**
-     * Monta o {@link br.com.vsjr.labs.log.core.LogEvento} e o emite via JBoss Logging.
+     * Monta o {@link br.com.vsjr.labs.observability.core.LogEvento} e o emite via JBoss Logging.
      *
      * <p>As dimensões estruturais (classe, método, motivo, canal) são inseridas
      * no MDC imediatamente antes da emissão e removidas logo após — garantindo
