@@ -3,8 +3,8 @@ package br.com.vsjr.labs.observability.filtro;
 import java.security.Principal;
 
 import br.com.vsjr.labs.observability.context.GerenciadorContextoLog;
-import br.com.vsjr.labs.observability.context.GerenciadorTracing;
-import br.com.vsjr.labs.observability.logs.LogSistematico;
+import br.com.vsjr.labs.observability.dsl.LogSistematico;
+import br.com.vsjr.labs.observability.tracing.GerenciadorTracing;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.container.ContainerResponseContext;

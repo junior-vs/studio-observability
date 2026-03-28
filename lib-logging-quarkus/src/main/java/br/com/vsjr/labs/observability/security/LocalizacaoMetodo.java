@@ -1,4 +1,4 @@
-package br.com.vsjr.labs.observability.utils;
+package br.com.vsjr.labs.observability.security;
 
 import jakarta.interceptor.InvocationContext;
 

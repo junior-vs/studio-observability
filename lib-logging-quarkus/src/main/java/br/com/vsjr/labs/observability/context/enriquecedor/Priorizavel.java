@@ -3,8 +3,8 @@ package br.com.vsjr.labs.observability.context.enriquecedor;
 /**
  * Contrato comum de prioridade para pipelines de enriquecimento.
  *
- * <p>Implementado por {@link br.com.vsjr.labs.observability.context.enriquecedor.logs.EnriquecedorContexto EnriquecedorContexto} (MDC) e
- * {@link br.com.vsjr.labs.observability.context.enriquecedor.tracing.EnriquecedorTracing EnriquecedorTracing} (OTel Spans). Os gerenciadores
+ * <p>Implementado por {@link br.com.vsjr.labs.observability.context.enriquecedor.EnriquecedorContexto EnriquecedorContexto} (MDC) e
+ * {@link br.com.vsjr.labs.observability.tracing.enriquecedor.EnriquecedorTracing EnriquecedorTracing} (OTel Spans). Os gerenciadores
  * executam os enriquecedores em ordem crescente deste valor:</p>
  *
  * <ul>

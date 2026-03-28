@@ -1,4 +1,4 @@
-package br.com.vsjr.labs.observability.logs;
+package br.com.vsjr.labs.observability.dsl;
 
 import java.util.Collections;
 import java.util.Map;

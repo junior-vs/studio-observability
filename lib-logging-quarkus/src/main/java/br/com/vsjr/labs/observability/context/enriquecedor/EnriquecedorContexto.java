@@ -1,7 +1,6 @@
-package br.com.vsjr.labs.observability.context.enriquecedor.logs;
+package br.com.vsjr.labs.observability.context.enriquecedor;
 
 import br.com.vsjr.labs.observability.context.GerenciadorContextoLog;
-import br.com.vsjr.labs.observability.context.enriquecedor.Priorizavel;
 import jakarta.interceptor.InvocationContext;
 
 import java.util.Set;

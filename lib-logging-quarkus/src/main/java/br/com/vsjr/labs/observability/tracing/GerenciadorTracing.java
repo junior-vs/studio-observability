@@ -1,8 +1,10 @@
-package br.com.vsjr.labs.observability.context;
+package br.com.vsjr.labs.observability.tracing;
 
 import java.util.Comparator;
 
-import br.com.vsjr.labs.observability.context.enriquecedor.tracing.EnriquecedorTracing;
+import br.com.vsjr.labs.observability.context.GerenciadorContextoLog;
+import br.com.vsjr.labs.observability.tracing.enriquecedor.EnriquecedorTracing;
+
 import org.jboss.logging.MDC;
 
 import io.opentelemetry.api.OpenTelemetry;

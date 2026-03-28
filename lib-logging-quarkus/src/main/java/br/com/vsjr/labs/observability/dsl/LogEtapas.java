@@ -1,7 +1,7 @@
-package br.com.vsjr.labs.observability.logs;
+package br.com.vsjr.labs.observability.dsl;
 
 
-import br.com.vsjr.labs.observability.utils.SanitizadorDados;
+import br.com.vsjr.labs.observability.security.SanitizadorDados;
 
 /**
  * Define as etapas da Fluent Interface da DSL de logging sistemático.

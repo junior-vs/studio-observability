@@ -1,9 +1,10 @@
-package br.com.vsjr.labs.observability.context.enriquecedor.logs;
+package br.com.vsjr.labs.observability.context.enriquecedor;
 
-import br.com.vsjr.labs.observability.utils.LocalizacaoMetodo;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.interceptor.InvocationContext;
 import org.jboss.logging.MDC;
+
+import br.com.vsjr.labs.observability.security.LocalizacaoMetodo;
 
 import java.util.Set;
 

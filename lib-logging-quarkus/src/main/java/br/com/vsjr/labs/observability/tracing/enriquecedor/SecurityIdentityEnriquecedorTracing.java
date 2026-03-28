@@ -1,4 +1,4 @@
-package br.com.vsjr.labs.observability.context.enriquecedor.tracing;
+package br.com.vsjr.labs.observability.tracing.enriquecedor;
 
 import io.opentelemetry.api.trace.Span;
 import io.quarkus.security.identity.SecurityIdentity;

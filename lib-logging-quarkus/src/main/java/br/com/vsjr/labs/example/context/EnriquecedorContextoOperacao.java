@@ -1,9 +1,9 @@
-package br.com.vsjr.labs.exemple.context;
+package br.com.vsjr.labs.example.context;
 
-import br.com.vsjr.labs.observability.context.enriquecedor.logs.EnriquecedorContexto;
-import br.com.vsjr.labs.observability.context.enriquecedor.logs.MetadadosEnriquecedorContexto;
-import br.com.vsjr.labs.observability.context.enriquecedor.logs.SecurityIdentityEnriquecedorContexto;
-import br.com.vsjr.labs.observability.utils.LocalizacaoMetodo;
+import br.com.vsjr.labs.observability.context.enriquecedor.EnriquecedorContexto;
+import br.com.vsjr.labs.observability.context.enriquecedor.MetadadosEnriquecedorContexto;
+import br.com.vsjr.labs.observability.context.enriquecedor.SecurityIdentityEnriquecedorContexto;
+import br.com.vsjr.labs.observability.security.LocalizacaoMetodo;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.interceptor.InvocationContext;
 import org.jboss.logging.MDC;

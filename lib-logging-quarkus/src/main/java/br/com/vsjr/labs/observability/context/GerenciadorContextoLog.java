@@ -1,7 +1,8 @@
 package br.com.vsjr.labs.observability.context;
 
 
-import br.com.vsjr.labs.observability.context.enriquecedor.logs.EnriquecedorContexto;
+import br.com.vsjr.labs.observability.context.enriquecedor.EnriquecedorContexto;
+import br.com.vsjr.labs.observability.tracing.GerenciadorTracing;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.interceptor.InvocationContext;

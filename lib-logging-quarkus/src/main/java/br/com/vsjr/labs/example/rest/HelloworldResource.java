@@ -1,8 +1,8 @@
-package br.com.vsjr.labs.exemple.rest;
+package br.com.vsjr.labs.example.rest;
 
 import br.com.vsjr.labs.observability.annotations.Logged;
 import br.com.vsjr.labs.observability.annotations.Rastreado;
-import br.com.vsjr.labs.observability.logs.LogSistematico;
+import br.com.vsjr.labs.observability.dsl.LogSistematico;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Response;
 
@@ -23,11 +23,11 @@ import jakarta.ws.rs.core.Response;
  * </ul>
  */
 @Path("/hello")
-public class HellowrdResource {
+public class HelloworldResource {
 
     HelloService helloService;
 
-    public HellowrdResource(HelloService helloService) {
+    public HelloworldResource(HelloService helloService) {
         this.helloService = helloService;
     }
 
@@ -41,7 +41,7 @@ public class HellowrdResource {
     public String hello() {
         LogSistematico
                 .registrando("Recurso Hello World invocado")
-                .em(HellowrdResource.class, "hello")
+                .em(HelloworldResource.class, "hello")
                 .porque("Solicitação de saudação recebida")
                 .como("API REST - GET /hello/world")
                 .info();
@@ -72,7 +72,7 @@ public class HellowrdResource {
 
         LogSistematico
                 .registrando("Consulta de pedido recebida")
-                .em(HellowrdResource.class, "buscarPedido")
+                .em(HelloworldResource.class, "buscarPedido")
                 .porque("Chamada à API de consulta de pedido")
                 .como("API REST - GET /hello/pedido")
                 .comDetalhe("pedidoId", pedidoId)   // → valor real
@@ -99,7 +99,7 @@ public class HellowrdResource {
         } catch (Exception e) {
             LogSistematico
                     .registrando("Falha na operação de divisão")
-                    .em(HellowrdResource.class, "divide")
+                    .em(HelloworldResource.class, "divide")
                     .porque("Erro propagado do serviço de divisão")
                     .como("API REST - POST /hello/divide")
                     .comDetalhe("dividendo", a)

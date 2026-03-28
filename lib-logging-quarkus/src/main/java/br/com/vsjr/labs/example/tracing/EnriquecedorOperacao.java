@@ -1,6 +1,6 @@
-package br.com.vsjr.labs.exemple.tracing;
+package br.com.vsjr.labs.example.tracing;
 
-import br.com.vsjr.labs.observability.context.enriquecedor.tracing.EnriquecedorTracing;
+import br.com.vsjr.labs.observability.tracing.enriquecedor.EnriquecedorTracing;
 import io.opentelemetry.api.trace.Span;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.interceptor.InvocationContext;

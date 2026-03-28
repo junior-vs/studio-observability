@@ -1,10 +1,11 @@
-package br.com.vsjr.labs.observability.context.enriquecedor.tracing;
+package br.com.vsjr.labs.observability.tracing.enriquecedor;
 
-import br.com.vsjr.labs.observability.utils.LocalizacaoMetodo;
 import io.opentelemetry.api.trace.Span;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.interceptor.InvocationContext;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+
+import br.com.vsjr.labs.observability.security.LocalizacaoMetodo;
 
 /**
  * Enriquecedor obrigatório — metadados técnicos da invocação.

@@ -1,10 +1,10 @@
-package br.com.vsjr.labs.observability.logs;
+package br.com.vsjr.labs.observability.dsl;
 
-
-import br.com.vsjr.labs.observability.utils.SanitizadorDados;
 
 import org.jboss.logging.Logger;
 import org.jboss.logging.MDC;
+
+import br.com.vsjr.labs.observability.security.SanitizadorDados;
 
 import java.util.LinkedHashMap;
 
@@ -130,7 +130,7 @@ public final class LogSistematico implements LogEtapas.EtapaOnde, LogEtapas.Etap
     // ── Emissão ───────────────────────────────────────────────────────────────
 
     /**
-     * Monta o {@link br.com.vsjr.labs.observability.logs.LogEvento} e o emite via JBoss Logging.
+     * Monta o {@link br.com.vsjr.labs.observability.dsl.LogEvento} e o emite via JBoss Logging.
      *
      * <p>As dimensões estruturais (classe, método, motivo, canal) são inseridas
      * no MDC imediatamente antes da emissão e removidas logo após — garantindo

@@ -3,9 +3,9 @@ package br.com.vsjr.labs.observability.interceptor;
 import org.jboss.logging.MDC;
 
 import br.com.vsjr.labs.observability.annotations.Rastreado;
-import br.com.vsjr.labs.observability.logs.LogSistematico;
-import br.com.vsjr.labs.observability.context.GerenciadorTracing;
-import br.com.vsjr.labs.observability.utils.LocalizacaoMetodo;
+import br.com.vsjr.labs.observability.dsl.LogSistematico;
+import br.com.vsjr.labs.observability.security.LocalizacaoMetodo;
+import br.com.vsjr.labs.observability.tracing.GerenciadorTracing;
 import jakarta.annotation.Priority;
 import jakarta.interceptor.AroundInvoke;
 import jakarta.interceptor.Interceptor;

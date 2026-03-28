@@ -1,7 +1,7 @@
-package br.com.vsjr.labs.observability.context.enriquecedor.tracing;
+package br.com.vsjr.labs.observability.tracing.enriquecedor;
 
-import br.com.vsjr.labs.observability.context.GerenciadorTracing;
 import br.com.vsjr.labs.observability.context.enriquecedor.Priorizavel;
+import br.com.vsjr.labs.observability.tracing.GerenciadorTracing;
 import io.opentelemetry.api.trace.Span;
 import jakarta.interceptor.InvocationContext;
 
