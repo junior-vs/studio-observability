@@ -1,6 +1,8 @@
 package br.com.vsjr.labs.observability.context;
 
 
+import br.com.vsjr.labs.observability.CamposMdc;
+import br.com.vsjr.labs.observability.ValoresPadrao;
 import br.com.vsjr.labs.observability.context.enriquecedor.EnriquecedorContexto;
 import br.com.vsjr.labs.observability.tracing.GerenciadorTracing;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -44,14 +46,13 @@ public class GerenciadorContextoLog {
      * @param enriquecedores  todos os beans {@link EnriquecedorContexto} descobertos via CDI
      */
     public GerenciadorContextoLog(
-            @ConfigProperty(name = "quarkus.application.name", defaultValue = "application-desconhecido") String applicationName,
+            @ConfigProperty(name = "quarkus.application.name", defaultValue = ValoresPadrao.APPLICATION_PADRAO) String applicationName,
             Instance<EnriquecedorContexto> enriquecedores) {
         this.applicationName = applicationName;
         this.enriquecedores = enriquecedores;
     }
 
-    private static final String CAMPO_USER_ID = "userId";
-    private static final String CAMPO_APPLICATION = "applicationName";
+
 
     /**
      * Inicializa o MDC com o contexto de identificação da requisição atual.
@@ -65,9 +66,9 @@ public class GerenciadorContextoLog {
      * @return snapshot imutável do contexto registrado no MDC
      */
     public LogContexto inicializar(String userId) {
-        var uid = userId != null ? userId : "anonimo";
-        MDC.put(CAMPO_USER_ID, uid);
-        MDC.put(CAMPO_APPLICATION, applicationName);
+        var uid = userId != null ? userId : ValoresPadrao.USUARIO_ANONIMO;
+        MDC.put(CamposMdc.USER_ID.chave(), uid);
+        MDC.put(CamposMdc.APPLICATION_NAME.chave(), applicationName);
         return new LogContexto(uid, applicationName);
     }
 
@@ -135,7 +136,7 @@ public class GerenciadorContextoLog {
         /**
          * Contexto vazio: usado quando nenhuma requisição está ativa (ex: testes, jobs).
          */
-        public static final LogContexto VAZIO = new LogContexto("anonimo", "desconhecido");
+        public static final LogContexto VAZIO = new LogContexto(ValoresPadrao.USUARIO_ANONIMO, ValoresPadrao.LOCALIZACAO_DESCONHECIDA);
     }
 
 }

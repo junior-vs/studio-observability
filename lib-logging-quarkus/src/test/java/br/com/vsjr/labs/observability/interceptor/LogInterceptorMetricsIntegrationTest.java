@@ -1,6 +1,7 @@
 package br.com.vsjr.labs.observability.interceptor;
 
 import br.com.vsjr.labs.example.rest.HelloService;
+import br.com.vsjr.labs.observability.CamposMdc;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -69,25 +70,69 @@ class LogInterceptorMetricsIntegrationTest {
         helloService.sayHello();
         assertThrows(NullPointerException.class, () -> helloService.divide(null, 1d));
 
-        var request = HttpRequest.newBuilder(metricsUri).GET().build();
-        var response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
-        var corpo = response.body();
+        var corpo = buscarCorpoMetrics();
         var nomePrometheus = applicationName.replaceAll("[^A-Za-z0-9_]", "_");
 
-        assertEquals(200, response.statusCode());
         assertTrue(corpo.contains(nomePrometheus + "_metodo_execucao_seconds_count"));
         assertTrue(corpo.contains(nomePrometheus + "_metodo_falha_total"));
     }
 
+    /** AC-005: métricas de negócio customizadas aparecem em /q/metrics. */
+    @Test
+    void deveExporMetricaCustomizadaNoEndpointPrometheus() throws IOException, InterruptedException {
+        meterRegistry.counter("test.custom.metric", "tipo", "validacao").increment();
+
+        var corpo = buscarCorpoMetrics();
+
+        assertTrue(corpo.contains("test_custom_metric_total"));
+    }
+
+    /** AC-006: publishPercentileHistogram gera buckets para histogram_quantile. */
+    @Test
+    void deveExporBucketsDeHistogramaParaTimerExecucao() throws IOException, InterruptedException {
+        helloService.sayHello();
+
+        var corpo = buscarCorpoMetrics();
+        var nomePrometheus = applicationName.replaceAll("[^A-Za-z0-9_]", "_");
+
+        assertTrue(corpo.contains(nomePrometheus + "_metodo_execucao_seconds_bucket"));
+    }
+
+    /** AC-008: cada método gera entrada de métrica independente em classe anotada com @Logged. */
+    @Test
+    void deveRegistrarMetricasIndependentesPorMetodo() {
+        helloService.sayHello();
+        helloService.buscarPedido("123", "tok", "00000000000");
+
+        var timerSayHello = meterRegistry.find(applicationName + ".metodo.execucao")
+                .tags(CamposMdc.CLASSE.chave(), "HelloService", CamposMdc.METODO.chave(), "sayHello")
+                .timer();
+        var timerBuscar = meterRegistry.find(applicationName + ".metodo.execucao")
+                .tags(CamposMdc.CLASSE.chave(), "HelloService", CamposMdc.METODO.chave(), "buscarPedido")
+                .timer();
+
+        assertNotNull(timerSayHello);
+        assertNotNull(timerBuscar);
+        assertTrue(timerSayHello.count() >= 1d);
+        assertTrue(timerBuscar.count() >= 1d);
+    }
+
     private Timer encontrarTimerExecucao() {
         return meterRegistry.find(applicationName + ".metodo.execucao")
-                .tags("classe", "HelloService", "metodo", "sayHello")
+                .tags(CamposMdc.CLASSE.chave(), "HelloService", CamposMdc.METODO.chave(), "sayHello")
                 .timer();
     }
 
     private Counter encontrarContadorFalha() {
         return meterRegistry.find(applicationName + ".metodo.falha")
-                .tags("classe", "HelloService", "metodo", "divide", "excecao", "NullPointerException")
+                .tags(CamposMdc.CLASSE.chave(), "HelloService", CamposMdc.METODO.chave(), "divide", CamposMdc.EXCECAO.chave(), "NullPointerException")
                 .counter();
+    }
+
+    private String buscarCorpoMetrics() throws IOException, InterruptedException {
+        var request = HttpRequest.newBuilder(metricsUri).GET().build();
+        var response = HttpClient.newHttpClient().send(request, HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, response.statusCode());
+        return response.body();
     }
 }

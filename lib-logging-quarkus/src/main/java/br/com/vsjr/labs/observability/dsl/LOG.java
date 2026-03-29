@@ -3,6 +3,9 @@ package br.com.vsjr.labs.observability.dsl;
 import org.jboss.logging.Logger;
 import org.jboss.logging.MDC;
 
+import br.com.vsjr.labs.observability.CamposMdc;
+import br.com.vsjr.labs.observability.ValoresPadrao;
+import br.com.vsjr.labs.observability.security.LocalizacaoMetodo;
 import br.com.vsjr.labs.observability.security.SanitizadorDados;
 
 import java.util.LinkedHashMap;
@@ -52,15 +55,19 @@ public final class LOG implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
     private String evento;
 
     /**
-     * Classe associada ao evento, usada tanto para composição do {@link LogEvento}
-     * quanto para obtenção do logger JBoss correspondente.
+     * Classe associada ao evento — usada para obter o logger JBoss correspondente.
+     * {@code null} quando o desenvolvedor não chamou {@link #em}; nesse caso o
+     * logger é obtido a partir de {@link LOG} e o nome da classe no evento é
+     * {@code "desconhecido"}.
      */
     private Class<?> classeAlvo;
 
     /**
-     * Nome do método relacionado ao evento de negócio.
+     * Localização técnica estruturada do evento (classe simples + método).
+     * Construída em {@link #em} via {@link LocalizacaoMetodo#of} para manter
+     * o mesmo contrato de formato usado pelos interceptores.
      */
-    private String metodo;
+    private LocalizacaoMetodo.Localizacao localizacao;
 
     /**
      * Motivo contextual opcional do evento.
@@ -117,7 +124,10 @@ public final class LOG implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
     @Override
     public LogEtapas.EtapaOpcional em(Class<?> classe, String metodo) {
         this.classeAlvo = classe;
-        this.metodo = normalizarTextoOpcional(metodo, true);
+        if (classe != null) {
+            var metodoNorm = normalizarTextoOpcional(metodo, true);
+            this.localizacao = LocalizacaoMetodo.of(classe, metodoNorm != null ? metodoNorm : ValoresPadrao.LOCALIZACAO_DESCONHECIDA);
+        }
         return this;
     }
 
@@ -243,17 +253,17 @@ public final class LOG implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
         }
 
         // Popula MDC com dimensões estruturais do evento
-        MDC.put("log_classe", eventoLog.classe());
-        MDC.put("log_metodo", eventoLog.metodo());
+        MDC.put(CamposMdc.LOG_CLASSE.chave(), eventoLog.classe());
+        MDC.put(CamposMdc.LOG_METODO.chave(), eventoLog.metodo());
         if (eventoLog.motivo() != null) {
-            MDC.put("log_motivo", eventoLog.motivo());
+            MDC.put(CamposMdc.LOG_MOTIVO.chave(), eventoLog.motivo());
         }
         if (eventoLog.canal() != null) {
-            MDC.put("log_canal", eventoLog.canal());
+            MDC.put(CamposMdc.LOG_CANAL.chave(), eventoLog.canal());
         }
 
         // Detalhes de negócio: cada entrada vira um campo JSON de primeiro nível
-        eventoLog.detalhes().forEach((chave, valor) -> MDC.put("detalhe_" + chave, valor != null ? valor.toString() : "null"));
+        eventoLog.detalhes().forEach((chave, valor) -> MDC.put(CamposMdc.PREFIXO_DETALHE + chave, valor != null ? valor.toString() : "null"));
 
         try {
             // Emissão via JBoss Logging - integração nativa com quarkus-logging-json
@@ -265,11 +275,11 @@ public final class LOG implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
         } finally {
             // Limpeza dos campos do evento: não remove o contexto da requisição
             // (traceId, userId), que é responsabilidade do GerenciadorContextoLog
-            MDC.remove("log_classe");
-            MDC.remove("log_metodo");
-            MDC.remove("log_motivo");
-            MDC.remove("log_canal");
-            eventoLog.detalhes().keySet().forEach(chave -> MDC.remove("detalhe_" + chave));
+            MDC.remove(CamposMdc.LOG_CLASSE.chave());
+            MDC.remove(CamposMdc.LOG_METODO.chave());
+            MDC.remove(CamposMdc.LOG_MOTIVO.chave());
+            MDC.remove(CamposMdc.LOG_CANAL.chave());
+            eventoLog.detalhes().keySet().forEach(chave -> MDC.remove(CamposMdc.PREFIXO_DETALHE + chave));
         }
     }
 
@@ -283,13 +293,10 @@ public final class LOG implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
      * @return instância de {@link LogEvento} pronta para ser emitida
      */
     private LogEvento criarEvento() {
-        var nomeClasse = classeAlvo != null
-                ? classeAlvo.getSimpleName()
-                : "desconhecido";
         return new LogEvento(
-                normalizarTextoObrigatorio(evento, "evento_nao_informado", false),
-                nomeClasse,
-                metodo,
+                normalizarTextoObrigatorio(evento, ValoresPadrao.EVENTO_NAO_INFORMADO, false),
+                localizacao != null ? localizacao.classeSimples() : ValoresPadrao.LOCALIZACAO_DESCONHECIDA,
+                localizacao != null ? localizacao.metodo() : null,
                 motivo,
                 canal,
                 detalhes

@@ -82,10 +82,7 @@
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-jfr</artifactId>
         </dependency>
-        <dependency>
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-micrometer</artifactId>
-        </dependency>
+        <!-- quarkus-micrometer é transitivo via quarkus-micrometer-registry-prometheus -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-observability-devservices</artifactId>
@@ -102,10 +99,11 @@
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-rest-jackson</artifactId>
         </dependency>
-        <dependency>
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-micrometer-opentelemetry</artifactId>
-        </dependency>
+        <!--
+            Alternativa OTLP: substituir quarkus-micrometer-registry-prometheus por
+            quarkus-micrometer-opentelemetry quando o OTel Collector é o único pipeline.
+            Mutuamente exclusivo com registry-prometheus. Ver concepts/METRICS.md §16.
+        -->
 
 
     </dependencies>

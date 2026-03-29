@@ -4,6 +4,7 @@ import java.util.Comparator;
 
 import org.jboss.logging.MDC;
 
+import br.com.vsjr.labs.observability.CamposMdc;
 import br.com.vsjr.labs.observability.tracing.enriquecedor.EnriquecedorTracing;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Span;
@@ -47,8 +48,7 @@ public class GerenciadorTracing {
     Tracer tracer;
     Instance<EnriquecedorTracing> enriquecedores;
 
-    private static final String CAMPO_TRACE_ID = "traceId";
-    private static final String CAMPO_SPAN_ID = "spanId";
+
 
     public GerenciadorTracing(OpenTelemetry openTelemetry, Instance<EnriquecedorTracing> enriquecedores) {
         this.tracer = openTelemetry.getTracer(GerenciadorTracing.class.getName());
@@ -69,8 +69,8 @@ public class GerenciadorTracing {
     public void sincronizarMdcRequisicao() {
         var spanContext = Span.current().getSpanContext();
         if (spanContext.isValid()) {
-            MDC.put(CAMPO_TRACE_ID, spanContext.getTraceId());
-            MDC.put(CAMPO_SPAN_ID, spanContext.getSpanId());
+            MDC.put(CamposMdc.TRACE_ID.chave(), spanContext.getTraceId());
+            MDC.put(CamposMdc.SPAN_ID.chave(), spanContext.getSpanId());
         }
     }
 
@@ -93,7 +93,7 @@ public class GerenciadorTracing {
                 .startSpan();
 
         var scope = span.makeCurrent();
-        MDC.put(CAMPO_SPAN_ID, span.getSpanContext().getSpanId());
+        MDC.put(CamposMdc.SPAN_ID.chave(), span.getSpanContext().getSpanId());
 
         enriquecedores.stream()
                 .sorted(Comparator.comparingInt(EnriquecedorTracing::prioridade))
@@ -118,9 +118,9 @@ public class GerenciadorTracing {
         ctx.span().end();
 
         if (spanIdPai != null) {
-            MDC.put(CAMPO_SPAN_ID, spanIdPai);
+            MDC.put(CamposMdc.SPAN_ID.chave(), spanIdPai);
         } else {
-            MDC.remove(CAMPO_SPAN_ID);
+            MDC.remove(CamposMdc.SPAN_ID.chave());
         }
     }
 

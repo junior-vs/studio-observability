@@ -11,7 +11,7 @@ import java.util.logging.Level;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
-class LogSistematicoTest {
+class LOGTest {
 
     @Test
     void erroDevePropagarThrowableParaORuntimeDeLogging() {
@@ -28,7 +28,7 @@ class LogSistematicoTest {
         var causa = new IllegalStateException("falha esperada");
 
         try {
-            LogSistematico.registrando("Evento com erro")
+            LOG.registrando("Evento com erro")
                     .em(ServicoTeste.class, "processar")
                     .erro(causa);
 

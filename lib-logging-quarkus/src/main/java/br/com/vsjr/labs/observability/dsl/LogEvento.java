@@ -1,5 +1,7 @@
 package br.com.vsjr.labs.observability.dsl;
 
+import br.com.vsjr.labs.observability.ValoresPadrao;
+
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Locale;
@@ -63,9 +65,9 @@ public record LogEvento(
      * {@code SequencedMap} preserva a ordem de inserção definida pelo desenvolvedor.
      */
     public LogEvento {
-        evento = normalizarObrigatorio(evento, "evento_nao_informado", false);
-        classe = normalizarObrigatorio(classe, "desconhecido", true);
-        metodo = normalizarObrigatorio(metodo, "desconhecido", true);
+        evento = normalizarObrigatorio(evento, ValoresPadrao.EVENTO_NAO_INFORMADO, false);
+        classe = normalizarObrigatorio(classe, ValoresPadrao.LOCALIZACAO_DESCONHECIDA, true);
+        metodo = normalizarObrigatorio(metodo, ValoresPadrao.LOCALIZACAO_DESCONHECIDA, true);
         motivo = normalizarOpcional(motivo, true);
         canal = normalizarOpcional(canal, true);
 

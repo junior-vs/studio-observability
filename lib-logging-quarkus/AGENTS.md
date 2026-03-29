@@ -7,37 +7,38 @@
 
 ## Architecture map (read these first)
 - `annotations/` (`@Logged`, `@Rastreado`) define CDI interceptor bindings.
-- `interceptor/LogInterceptor` adds technical location to MDC. Metrics are intentionally out of scope for now.
-- `interceptor/RastreamentoInterceptor` creates child spans and runs before `LogInterceptor` (`APPLICATION - 10`).
+- `interceptor/LogInterceptor` executes `EnriquecedorContexto` pipeline (technical location + optional context fields), cleans enrichment keys, and records Micrometer metrics when enabled.
+- `interceptor/TracingInterceptor` creates child spans and runs before `LogInterceptor` (`APPLICATION - 10`).
 - `filtro/LogContextoFiltro` initializes request MDC (`traceId`, `spanId`, `userId`, `applicationName`) and clears MDC on response.
-- `dsl/LogSistematico` + `dsl/LogEtapas` implement the fluent 5W1H logging API with compile-time ordering via sealed interfaces.
-- `tracing/GerenciadorRastreamento` manages span lifecycle and executes `EnriquecedorSpan` chain by priority.
+- `dsl/LOG` + `dsl/LogEtapas` implement the fluent 5W1H logging API with compile-time ordering via sealed interfaces.
+- `context/enriquecedor/*` (`EnriquecedorContexto`) defines the MDC enrichment chain consumed by `GerenciadorContextoLog`.
+- `tracing/GerenciadorTracing` manages span lifecycle and executes `EnriquecedorTracing` chain by priority.
 
 ## Runtime flow
 - HTTP request enters `LogContextoFiltro.filter(request)` -> MDC context is initialized from active OTel span and security identity.
-- Business methods annotated with `@Rastreado` create child span; same methods with `@Logged` enrich MDC with technical location.
-- `LogSistematico` emits JSON-compatible logs through JBoss Logging and temporary MDC fields (`log_*`, `detalhe_*`).
+- Business methods annotated with `@Rastreado` create child span; same methods with `@Logged` run MDC enrichers and (when enabled) collect method execution/failure metrics.
+- `LOG` emits JSON-compatible logs through JBoss Logging and temporary MDC fields (`log_*`, `detalhe_*`).
 - Response filter calls `GerenciadorContextoLog.limpar()` to prevent MDC leakage across Vert.x threads.
 
 ## Project-specific coding rules
-- Use `LogSistematico` instead of ad-hoc loggers for business events. Minimum valid sequence: `registrando(...).em(...).info()/erro(...)`.
+- Use `LOG` instead of ad-hoc loggers for business events. Minimum valid sequence: `registrando(...).em(...).info()/erro(...)`.
 - `comDetalhe(chave, valor)` is automatically sanitized by `SanitizadorDados`; do not bypass this for sensitive fields.
 - MDC ownership is split by design:
   - request correlation keys are owned by `LogContextoFiltro`/`GerenciadorContextoLog`;
-  - per-event keys are owned/cleaned by `LogSistematico` and `LogInterceptor`.
-- When adding tracing attributes, implement `EnriquecedorSpan` (`@ApplicationScoped`) and choose priority:
-  - infra enrichers: `10-50` (see `EnriquecedorMetadados`, `EnriquecedorIdentidade`)
-  - business enrichers: `100+` (see `exemple/tracing/EnriquecedorOperacao`).
-- Keep span names in `Classe.metodo` format (created in `RastreamentoInterceptor`).
+  - per-event keys are owned/cleaned by `LOG` and `EnriquecedorContexto` (via `LogInterceptor`/`GerenciadorContextoLog`).
+- When adding tracing attributes, implement `EnriquecedorTracing` (`@ApplicationScoped`) and choose priority:
+  - infra enrichers: `10-50` (see `MetadadosEnriquecedorTracing`, `SecurityIdentityEnriquecedorTracing`)
+  - business enrichers: `100+` (see `example/tracing/EnriquecedorOperacao`).
+- Keep span names in `Classe.metodo` format (created in `TracingInterceptor`).
 
 ## Build, test, and run
 - Dev mode (Windows): `mvnw.cmd quarkus:dev`
 - Package JAR: `mvnw.cmd package`
 - Run tests: `mvnw.cmd test`
 - Native profile toggles in `pom.xml` (`-Dnative` activates `skipITs=false`, native build settings).
-- Observability config is in `src/main/resources/application.properties` (OTLP endpoint `http://localhost:4317`).
+- Observability config is in `src/main/resources/application.properties` (`%dev` OTLP endpoint `http://localhost:4317`, `%prod` endpoint `http://otel-collector:4317`).
 - JSON logging is enabled for `dev` and `prod` profiles (console and file according to profile setup).
-- Metrics are planned for a future module/release and remain disabled in current configuration.
+- Metrics are implemented in `LogInterceptor` but disabled by default (`quarkus.micrometer.enabled=false`); enable per environment/profile when needed.
 
 ## Testing patterns in this repo
 - Unit tests are JUnit 5 with direct JBoss LogManager capture (`src/test/java/br/com/vsjr/labs/observability/dsl/LogSistematicoTest.java`).

@@ -2,6 +2,7 @@ package br.com.vsjr.labs.observability.interceptor;
 
 import org.jboss.logging.MDC;
 
+import br.com.vsjr.labs.observability.CamposMdc;
 import br.com.vsjr.labs.observability.annotations.Rastreado;
 import br.com.vsjr.labs.observability.dsl.LOG;
 import br.com.vsjr.labs.observability.security.LocalizacaoMetodo;
@@ -57,7 +58,7 @@ public class TracingInterceptor {
         var nomeSpan = localizacao.operacao();
 
         // Salva o spanId do pai antes de criar o Child Span para restaurar no finally
-        var spanIdPai = (String) MDC.get("spanId");
+        var spanIdPai = (String) MDC.get(CamposMdc.SPAN_ID.chave());
 
         var contextoSpan = gerenciador.iniciar(nomeSpan, contexto);
         try {

@@ -2,6 +2,7 @@ package br.com.vsjr.labs.observability.filtro;
 
 import java.security.Principal;
 
+import br.com.vsjr.labs.observability.ValoresPadrao;
 import br.com.vsjr.labs.observability.context.GerenciadorContextoLog;
 import br.com.vsjr.labs.observability.dsl.LOG;
 import br.com.vsjr.labs.observability.tracing.GerenciadorTracing;
@@ -75,10 +76,10 @@ public class LogContextoFiltro implements ContainerRequestFilter, ContainerRespo
     private String resolverUsuario(ContainerRequestContext requestContext) {
 
         return switch (requestContext.getSecurityContext()) {
-            case null -> "anonimo";
+            case null -> ValoresPadrao.USUARIO_ANONIMO;
             case SecurityContext sc when sc.getUserPrincipal() instanceof Principal p
                     && p.getName() != null -> p.getName();
-            default -> "anonimo";
+            default -> ValoresPadrao.USUARIO_ANONIMO;
         };
     }
 }

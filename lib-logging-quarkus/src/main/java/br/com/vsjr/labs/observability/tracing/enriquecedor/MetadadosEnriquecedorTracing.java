@@ -5,6 +5,7 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.interceptor.InvocationContext;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
+import br.com.vsjr.labs.observability.ValoresPadrao;
 import br.com.vsjr.labs.observability.security.LocalizacaoMetodo;
 
 /**
@@ -28,7 +29,7 @@ public class MetadadosEnriquecedorTracing implements EnriquecedorTracing {
     String applicationName;
 
     public MetadadosEnriquecedorTracing(
-            @ConfigProperty(name = "quarkus.application.name", defaultValue = "application-desconhecido") String applicationName) {
+            @ConfigProperty(name = "quarkus.application.name", defaultValue = ValoresPadrao.APPLICATION_PADRAO) String applicationName) {
         this.applicationName = applicationName;
     }
 

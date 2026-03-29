@@ -1,5 +1,6 @@
 package br.com.vsjr.labs.observability.dsl;
 
+import br.com.vsjr.labs.observability.ValoresPadrao;
 import org.junit.jupiter.api.Test;
 
 import java.util.LinkedHashMap;
@@ -46,9 +47,9 @@ class LogEventoTest {
     void deveAplicarFallbackQuandoCamposObrigatoriosForemNulos() {
         var evento = new LogEvento(null, null, null, "", "", Map.of());
 
-        assertEquals("evento_nao_informado", evento.evento());
-        assertEquals("desconhecido", evento.classe());
-        assertEquals("desconhecido", evento.metodo());
+        assertEquals(ValoresPadrao.EVENTO_NAO_INFORMADO, evento.evento());
+        assertEquals(ValoresPadrao.LOCALIZACAO_DESCONHECIDA, evento.classe());
+        assertEquals(ValoresPadrao.LOCALIZACAO_DESCONHECIDA, evento.metodo());
         assertNull(evento.motivo());
         assertNull(evento.canal());
     }

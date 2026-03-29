@@ -2,9 +2,12 @@ package br.com.vsjr.labs.observability.interceptor;
 
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
+import br.com.vsjr.labs.observability.CamposMdc;
+import br.com.vsjr.labs.observability.ValoresPadrao;
 import br.com.vsjr.labs.observability.annotations.Logged;
 import br.com.vsjr.labs.observability.context.GerenciadorContextoLog;
 import br.com.vsjr.labs.observability.dsl.LOG;
+import br.com.vsjr.labs.observability.security.LocalizacaoMetodo;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import jakarta.annotation.Priority;
@@ -51,7 +54,7 @@ public class LogInterceptor {
     private final MeterRegistry meterRegistry;
 
     public LogInterceptor(
-            @ConfigProperty(name = "quarkus.application.name", defaultValue = "application-desconhecido") String applicationName,
+            @ConfigProperty(name = "quarkus.application.name", defaultValue = ValoresPadrao.APPLICATION_PADRAO) String applicationName,
             GerenciadorContextoLog gerenciador, Instance<MeterRegistry> meterRegistryInstance) {
         this.applicationName = applicationName;
         this.gerenciador = gerenciador;
@@ -91,11 +94,12 @@ public class LogInterceptor {
             return;
         }
         try {
+            var localizacao = LocalizacaoMetodo.extrair(contexto);
             meterRegistry.counter(
                     applicationName + ".metodo.falha",
-                    "classe", resolverClasse(contexto),
-                    "metodo", resolverMetodo(contexto),
-                    "excecao", erro.getClass().getSimpleName()).increment();
+                    CamposMdc.CLASSE.chave(), localizacao.classeSimples(),
+                    CamposMdc.METODO.chave(), localizacao.metodo(),
+                    CamposMdc.EXCECAO.chave(), erro.getClass().getSimpleName()).increment();
         } catch (Exception metricaFalhou) {
 
             LOG.registrando("Registro de métrica de falha")
@@ -111,9 +115,10 @@ public class LogInterceptor {
             return;
         }
         try {
+            var localizacao = LocalizacaoMetodo.extrair(contexto);
             sample.stop(Timer.builder(applicationName + ".metodo.execucao")
-                    .tag("classe", resolverClasse(contexto))
-                    .tag("metodo", resolverMetodo(contexto))
+                    .tag(CamposMdc.CLASSE.chave(), localizacao.classeSimples())
+                    .tag(CamposMdc.METODO.chave(), localizacao.metodo())
                     .publishPercentileHistogram()
                     .register(meterRegistry));
         } catch (Exception metricaFalhou) {
@@ -126,28 +131,4 @@ public class LogInterceptor {
         }
     }
 
-    private String resolverClasse(InvocationContext contexto) {
-        var classeDeclarada = contexto.getMethod().getDeclaringClass();
-        if (classeDeclarada != null) {
-            return classeDeclarada.getSimpleName();
-        }
-        var alvo = contexto.getTarget();
-        if (alvo == null) {
-            return "Desconhecido";
-        }
-        var classeAlvo = alvo.getClass();
-        var nomeClasse = classeAlvo.getSimpleName();
-        if (!nomeClasse.isBlank()) {
-            return nomeClasse;
-        }
-        var superClasse = classeAlvo.getSuperclass();
-        if (superClasse != null) {
-            return superClasse.getSimpleName();
-        }
-        return "Desconhecido";
-    }
-
-    private String resolverMetodo(InvocationContext contexto) {
-        return contexto.getMethod().getName();
-    }
 }
