@@ -398,7 +398,353 @@ histogram_quantile(0.99,
 
 ### 15. Criando Métricas de Negócio Customizadas
 
-Além das métricas automáticas e das geradas pelo `@Logged`, o desenvolvedor pode registrar métricas de negócio diretamente no `MeterRegistry`.
+**Gauge — estado corrente**
+
+O Gauge é o único medidor que *observa* um valor externo em vez de acumulá-lo. Ao contrário do Counter e do Timer, o código de instrumentação não "empurra" um valor para o registro — o Micrometer *puxa* o valor do objeto observado a cada scrape do Prometheus ou ciclo de exportação OTLP.
+
+Isso tem uma consequência direta: **não existe conceito de "incrementar" ou "decrementar" um Gauge diretamente**. O valor do Gauge é sempre o que o objeto observado retorna no momento da leitura.
+
+> **⚠️ Referência fraca — armadilha crítica em produção:** o Micrometer mantém apenas referência **fraca** ao objeto observado. Se nenhuma outra parte do código mantiver uma referência forte ao objeto, o GC pode coletá-lo e o Gauge passará a retornar `NaN` silenciosamente — sem exceção, sem log, sem alerta. **Sempre garanta que o bean CDI ou campo da classe mantenha a referência forte ao objeto instrumentado.**
+
+Há três padrões de uso, cada um adequado a uma categoria diferente de estado a observar:
+
+---
+
+**Padrão 1 — Gauge observador de coleção (`gaugeCollectionSize` / `gaugeMapSize`)**
+
+*Use quando: o estado a observar já é uma coleção ou mapa Java gerenciado pelo próprio bean.*
+
+O `MeterRegistry` oferece atalhos de conveniência — `gaugeCollectionSize` e `gaugeMapSize` — que registram o Gauge e retornam a própria coleção instrumentada. Isso elimina a necessidade de declarar o Gauge separadamente e é o padrão mais idiomático quando a coleção é o estado canônico do bean.
+
+```java
+@ApplicationScoped
+public class FilaProcessamento {
+
+    // A referência deve ser mantida pelo bean — o Micrometer usa referência fraca ao objeto
+    private final List<Pedido> pendentes;
+    private final Map<String, Pedido> emProcessamento;
+
+    public FilaProcessamento(MeterRegistry meterRegistry) {
+
+        // gaugeCollectionSize: registra Gauge que lê Collection::size a cada scrape
+        this.pendentes = meterRegistry.gaugeCollectionSize(
+            "fila.pedidos.pendentes",
+            Tags.of("etapa", "entrada"),
+            new ArrayList<>()
+        );
+
+        // gaugeMapSize: equivalente para Map — lê Map::size a cada scrape
+        this.emProcessamento = meterRegistry.gaugeMapSize(
+            "fila.pedidos.processando",
+            Tags.of("etapa", "execucao"),
+            new ConcurrentHashMap<>()
+        );
+    }
+
+    public void enfileirar(Pedido pedido) {
+        pendentes.add(pedido);            // Gauge reflete o novo tamanho no próximo scrape
+    }
+
+    public void iniciarProcessamento(Pedido pedido) {
+        pendentes.remove(pedido);
+        emProcessamento.put(pedido.getId(), pedido);
+    }
+
+    public void concluir(Pedido pedido) {
+        emProcessamento.remove(pedido.getId()); // Gauge reflete a remoção automaticamente
+    }
+}
+```
+
+> **Por que não usar `Gauge.builder` aqui:** `gaugeCollectionSize` é equivalente a `Gauge.builder("nome", colecao, Collection::size).register(registry)` mas retorna a própria coleção, permitindo atribuição direta ao campo. O padrão é mais conciso e deixa a intenção explícita no código.
+
+---
+
+**Padrão 2 — Gauge observador de objeto arbitrário (`Gauge.builder` com `ToDoubleFunction`)**
+
+*Use quando: o estado a observar é um objeto de domínio ou de infraestrutura que expõe getters numéricos — pool de conexões, cache, objeto de configuração, cliente de API externa.*
+
+O `Gauge.builder` aceita qualquer objeto e uma `ToDoubleFunction` que extrai o valor numérico a cada leitura. Um mesmo objeto pode ser observado por múltiplos Gauges, cada um extraindo uma propriedade diferente:
+
+```java
+@ApplicationScoped
+public class CacheMetricas {
+
+    // Referência forte ao cache — necessária porque o Gauge usa referência fraca
+    private final Cache<String, Produto> cache;
+
+    public CacheMetricas(Cache<String, Produto> cache, MeterRegistry meterRegistry) {
+        this.cache = cache;
+
+        // Tamanho atual do cache
+        Gauge.builder("cache.produtos.tamanho", cache, Cache::estimatedSize)
+            .description("Número estimado de entradas no cache de produtos")
+            .register(meterRegistry);
+
+        // Taxa de acerto — valor entre 0.0 e 1.0
+        // stats() retorna CacheStats; hitRate() é um double — ToDoubleFunction<Cache>
+        Gauge.builder("cache.produtos.hit.rate", cache, c -> c.stats().hitRate())
+            .description("Taxa de acerto do cache de produtos (proporção de hits sobre total de acessos)")
+            .register(meterRegistry);
+
+        // Número de evicções acumuladas — observado como Gauge, não Counter,
+        // porque o objeto cache já acumula internamente e não queremos dupla contagem
+        Gauge.builder("cache.produtos.evicoes", cache, c -> c.stats().evictionCount())
+            .description("Total de entradas removidas por evicção desde a inicialização")
+            .register(meterRegistry);
+    }
+}
+```
+
+O mesmo padrão se aplica a objetos de infraestrutura gerenciados externamente, como um `DataSource` ou `ThreadPoolExecutor`:
+
+```java
+@ApplicationScoped
+public class InfraMetricas {
+
+    private final ThreadPoolExecutor executor;
+
+    public InfraMetricas(ThreadPoolExecutor executor, MeterRegistry meterRegistry) {
+        this.executor = executor;
+
+        Gauge.builder("executor.tarefas.ativas", executor, ThreadPoolExecutor::getActiveCount)
+            .description("Threads do pool ativamente executando tarefas")
+            .register(meterRegistry);
+
+        Gauge.builder("executor.fila.tamanho", executor, e -> e.getQueue().size())
+            .description("Tarefas aguardando execução na fila do pool")
+            .register(meterRegistry);
+
+        Gauge.builder("executor.pool.tamanho", executor, ThreadPoolExecutor::getPoolSize)
+            .description("Número atual de threads no pool, incluindo ociosas")
+            .register(meterRegistry);
+    }
+}
+```
+
+> **Múltiplos Gauges sobre o mesmo objeto:** é correto e idiomático. Cada `Gauge.builder` registra uma série temporal independente com nome e tags próprios. O objeto (`executor`, `cache`) é compartilhado como referência — leve e sem custo extra.
+
+---
+
+**Padrão 3 — Gauge imperativo com `AtomicLong`**
+
+*Use quando: o valor do Gauge é calculado por código de negócio em momentos específicos — não é derivado diretamente de uma estrutura em memória, mas de uma query ao banco, uma chamada a uma API externa, ou um cálculo periódico.*
+
+O `AtomicLong` atua como suporte (*backing store*) do Gauge. O código de negócio chama `.set(valor)` para atualizar o estado; o Gauge lê o `AtomicLong` a cada scrape. O bean CDI mantém a referência forte ao `AtomicLong`, evitando a coleta pelo GC:
+
+```java
+@ApplicationScoped
+public class PedidoEstadoMetricas {
+
+    // AtomicLong como suporte — referência forte garantida pelo bean @ApplicationScoped
+    private final AtomicLong pedidosPendentes    = new AtomicLong(0);
+    private final AtomicLong pedidosEmAnalise    = new AtomicLong(0);
+    private final AtomicLong pedidosBloqueados   = new AtomicLong(0);
+
+    public PedidoEstadoMetricas(MeterRegistry meterRegistry) {
+
+        Gauge.builder("pedidos.por.estado", pedidosPendentes, AtomicLong::get)
+            .tag("estado", "PENDENTE")
+            .description("Pedidos atualmente no estado PENDENTE")
+            .register(meterRegistry);
+
+        Gauge.builder("pedidos.por.estado", pedidosEmAnalise, AtomicLong::get)
+            .tag("estado", "EM_ANALISE")
+            .description("Pedidos atualmente em análise de fraude")
+            .register(meterRegistry);
+
+        Gauge.builder("pedidos.por.estado", pedidosBloqueados, AtomicLong::get)
+            .tag("estado", "BLOQUEADO")
+            .description("Pedidos bloqueados aguardando revisão manual")
+            .register(meterRegistry);
+    }
+
+    // Chamado periodicamente por um job (@Scheduled) ou após eventos de mudança de estado
+    public void sincronizarContadores(Map<String, Long> contagensPorEstado) {
+        pedidosPendentes.set(contagensPorEstado.getOrDefault("PENDENTE",  0L));
+        pedidosEmAnalise.set(contagensPorEstado.getOrDefault("EM_ANALISE", 0L));
+        pedidosBloqueados.set(contagensPorEstado.getOrDefault("BLOQUEADO", 0L));
+    }
+}
+```
+
+O bean que popula o Gauge fica separado da fonte de dados — a atualização é disparada por um job agendado ou por um evento de domínio:
+
+```java
+@ApplicationScoped
+public class PedidoEstadoSincronizador {
+
+    private final PedidoRepository repository;
+    private final PedidoEstadoMetricas metricas;
+
+    @Scheduled(every = "30s")   // Quarkus Scheduler — atualiza os Gauges a cada 30 segundos
+    public void sincronizar() {
+        try {
+            var contagens = repository.contarPorEstado(); // SELECT estado, COUNT(*) GROUP BY estado
+            metricas.sincronizarContadores(contagens);
+        } catch (Exception e) {
+            // Falha de sincronização não interrompe o negócio — Gauge mantém último valor conhecido
+            log.warn("Falha ao sincronizar métricas de estado de pedidos: {}", e.getMessage());
+        }
+    }
+}
+```
+
+> **Por que não usar Counter aqui:** contagens de entidades em um estado específico *podem diminuir* — pedidos saem de `PENDENTE` quando são processados. Counter é monotônico por definição. O Gauge com `AtomicLong` é o instrumento correto para estados que oscilam.
+
+> **Frequência de atualização:** o intervalo do job de sincronização deve ser compatível com o intervalo de scrape do Prometheus (padrão: 15s). Um job a cada 30s é razoável — evita pressão no banco e garante que o valor esteja razoavelmente atual a cada coleta.
+
+---
+
+**Padrão 4 — `MultiGauge` para múltiplas dimensões (observer)**
+
+*Use quando: o mesmo fenômeno precisa ser reportado para vários conjuntos de tags ao mesmo tempo — como contagem de entidades por estado, por tipo ou por canal — e esses conjuntos são dinâmicos (surgem ou desaparecem com o tempo).*
+
+O `MultiGauge` gerencia internamente um conjunto de séries temporais com a mesma métrica base e tags variáveis. Diferente de múltiplos `Gauge.builder` independentes com `AtomicLong`, o `MultiGauge` recebe os novos valores de uma só vez registrando novas `Row`s — cada `Row` é um par `(Tags, valor)`. Com `overwrite=true`, séries cujos estados desapareceram do resultado são removidas automaticamente, evitando "séries zumbi" no Prometheus.
+
+```java
+@ApplicationScoped
+public class PedidoEstadoMetricas {
+
+    private final MultiGauge pedidosPorEstado;
+
+    public PedidoEstadoMetricas(MeterRegistry meterRegistry) {
+        // Registra o MultiGauge — sem dimensões iniciais, apenas define o nome e descrição
+        this.pedidosPorEstado = MultiGauge.builder("pedidos.por.estado")
+            .description("Pedidos agrupados por estado atual")
+            .register(meterRegistry);
+    }
+
+    // Chamado por @Scheduled ou após eventos de domínio com o resultado de
+    //   SELECT estado, COUNT(*) FROM pedidos GROUP BY estado
+    public void atualizar(Map<String, Long> contagensPorEstado) {
+        var rows = contagensPorEstado.entrySet().stream()
+            .map(e -> MultiGauge.Row.of(Tags.of("estado", e.getKey()), e.getValue()))
+            .toList();
+
+        // overwrite=true: remove séries de estados que sumiram do resultado
+        pedidosPorEstado.register(rows, true);
+    }
+}
+```
+
+```java
+@ApplicationScoped
+public class PedidoEstadoSincronizador {
+
+    private final PedidoRepository repository;
+    private final PedidoEstadoMetricas metricas;
+
+    @Scheduled(every = "30s")
+    public void sincronizar() {
+        try {
+            metricas.atualizar(repository.contarPorEstado());
+        } catch (Exception e) {
+            log.warn("Falha ao sincronizar métricas de estado: {}", e.getMessage());
+        }
+    }
+}
+```
+
+```promql
+# Pedidos em estado PENDENTE agora
+pedidos_por_estado{estado="PENDENTE"}
+
+# Total por todos os estados — visão de distribuição de backlog
+sum by (estado) (pedidos_por_estado)
+```
+
+> **`MultiGauge` vs. múltiplos `Gauge.builder` com `AtomicLong`:** prefira `MultiGauge` quando as dimensões são dinâmicas (novos estados podem surgir, estados vazios devem ser ocultados). Para dimensões estáticas e conhecidas em tempo de compilação (ex: dois ambientes fixos), múltiplos `Gauge.builder` são suficientes.
+
+---
+
+**Padrão 5 — `TimeGauge` para tempo decorrido desde um evento**
+
+*Use quando: o valor a observar é uma duração — tempo desde o último heartbeat, idade da mensagem mais antiga em fila, tempo desde o último backup bem-sucedido.*
+
+O `TimeGauge` é um Gauge semântico para valores temporais. Recebe uma `ToDoubleFunction` que retorna um valor numérico na `TimeUnit` especificada; o Micrometer converte automaticamente para a unidade esperada pelo backend (Prometheus usa segundos). Ao contrário de um Gauge genérico com valor em milissegundos exposto diretamente, o `TimeGauge` garante a conversão correta independente do backend.
+
+```java
+@ApplicationScoped
+public class HeartbeatMetricas {
+
+    // Referência forte — necessária porque TimeGauge usa referência fraca ao objeto
+    private final AtomicLong ultimoHeartbeatEpoch;
+
+    public HeartbeatMetricas(MeterRegistry meterRegistry) {
+        this.ultimoHeartbeatEpoch = new AtomicLong(System.currentTimeMillis());
+
+        // A função é avaliada a cada scrape do Prometheus — modelo pull/observer
+        TimeGauge.builder(
+                "heartbeat.ultima.ha",             // nome da métrica
+                ultimoHeartbeatEpoch,              // objeto observado (referência forte)
+                TimeUnit.MILLISECONDS,             // unidade do valor retornado pela função
+                epoch -> System.currentTimeMillis() - epoch.get()  // função avaliada no scrape
+            )
+            .description("Tempo decorrido desde o último heartbeat bem-sucedido")
+            .register(meterRegistry);
+    }
+
+    public void registrarHeartbeat() {
+        ultimoHeartbeatEpoch.set(System.currentTimeMillis());
+    }
+}
+```
+
+```promql
+# Alerta se o heartbeat não ocorre há mais de 60 segundos
+heartbeat_ultima_ha_seconds > 60
+```
+
+O mesmo padrão serve para monitorar a "idade" da mensagem mais antiga em fila — útil para detectar filas presas sem consumidor ativo:
+
+```java
+@ApplicationScoped
+public class FilaMensagensMetricas {
+
+    private final BlockingQueue<Mensagem> fila;
+
+    public FilaMensagensMetricas(BlockingQueue<Mensagem> fila, MeterRegistry meterRegistry) {
+        this.fila = fila;
+
+        // Tamanho da fila — Gauge observer puro: nenhum código de "set" necessário
+        meterRegistry.gaugeCollectionSize("fila.mensagens.tamanho", Tags.empty(), fila);
+
+        // Idade da mensagem mais antiga — avaliada a cada scrape
+        TimeGauge.builder(
+                "fila.mensagem.mais.antiga",
+                fila,
+                TimeUnit.MILLISECONDS,
+                q -> {
+                    var oldest = q.peek();
+                    return oldest != null ? System.currentTimeMillis() - oldest.getTimestamp() : 0L;
+                }
+            )
+            .description("Idade da mensagem mais antiga aguardando processamento")
+            .register(meterRegistry);
+    }
+}
+```
+
+```promql
+# Alerta se há mensagens esperando há mais de 5 minutos (300 segundos)
+fila_mensagem_mais_antiga_seconds > 300
+```
+
+> **`TimeGauge` vs. Gauge com milissegundos hard-coded:** use sempre `TimeGauge` para durações. Prometheus espera segundos; um Gauge que exponha milissegundos diretamente produz alertas e dashboards com escala errada. O `TimeGauge` realiza a conversão automaticamente, tornando o código agnóstico ao backend de métricas.
+
+---
+
+**Resumo dos cinco padrões:**
+
+| Padrão | Mecanismo | Quando usar |
+|---|---|---|
+| **Observador de coleção** | `gaugeCollectionSize` / `gaugeMapSize` | A coleção/mapa é o estado canônico do bean — nenhum código de "set" necessário |
+| **Observador de objeto** | `Gauge.builder` + `ToDoubleFunction` | Objeto de domínio ou infra expõe getter numérico — cache, pool, executor |
+| **Imperativo** | `Gauge.builder` + `AtomicLong` | Último recurso: valor calculado por código sem objeto observável direto |
+| **Múltiplas dimensões dinâmicas** | `MultiGauge` + `Row.of(Tags, valor)` | Dimensões surgem e somem com o tempo — estados de entidade, categorias, tenants |
+| **Duração desde evento** | `TimeGauge` + `ToDoubleFunction` | Tempo decorrido — heartbeat, idade de mensagem, tempo desde último backup |
+
 
 **Counter — eventos de negócio:**
 
@@ -506,7 +852,7 @@ public class RelatorioService {
     }
 }
 ```
-
+ ,
 ---
 
 ### 16. Exportação Unificada via OTLP (`quarkus-micrometer-opentelemetry`)

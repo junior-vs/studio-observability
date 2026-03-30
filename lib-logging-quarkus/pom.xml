@@ -104,6 +104,11 @@
             quarkus-micrometer-opentelemetry quando o OTel Collector é o único pipeline.
             Mutuamente exclusivo com registry-prometheus. Ver concepts/METRICS.md §16.
         -->
+        <!-- Scheduler — necessário para os exemplos de Gauge com @Scheduled em br.com.vsjr.labs.example.metrics -->
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-scheduler</artifactId>
+        </dependency>
 
 
     </dependencies>

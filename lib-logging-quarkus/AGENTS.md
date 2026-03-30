@@ -41,11 +41,12 @@
 - Metrics are implemented in `LogInterceptor` but disabled by default (`quarkus.micrometer.enabled=false`); enable per environment/profile when needed.
 
 ## Testing patterns in this repo
-- Unit tests are JUnit 5 with direct JBoss LogManager capture (`src/test/java/br/com/vsjr/labs/observability/dsl/LogSistematicoTest.java`).
+- Unit tests are JUnit 5 with direct JBoss LogManager capture (`src/test/java/br/com/vsjr/labs/observability/dsl/LOGTest.java`).
+- Metrics behavior is validated with Quarkus integration tests using profile overrides (`src/test/java/br/com/vsjr/labs/observability/interceptor/LogInterceptorMetricsIntegrationTest.java`, `MetricsEnabledTestProfile.java`).
 - For logging assertions, attach temporary handlers and always restore logger state in `finally`.
 
 ## Safe extension points
 - New logging behaviors: extend DSL or interceptors without changing mandatory call order contract in `LogEtapas`.
-- New HTTP context fields: add in `GerenciadorContextoLog` and ensure cleanup path still runs in response filter.
-- New trace metadata: add an `EnriquecedorSpan` rather than modifying `GerenciadorRastreamento` directly.
+- New HTTP context fields: prefer new `EnriquecedorContexto` (declare `chavesMdc()` for cleanup) rather than writing directly in `GerenciadorContextoLog`.
+- New trace metadata: add an `EnriquecedorTracing` rather than modifying `GerenciadorTracing` directly.
 
