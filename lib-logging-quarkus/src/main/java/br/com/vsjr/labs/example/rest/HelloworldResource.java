@@ -2,6 +2,7 @@ package br.com.vsjr.labs.example.rest;
 
 import br.com.vsjr.labs.observability.annotations.Logged;
 import br.com.vsjr.labs.observability.annotations.Rastreado;
+import br.com.vsjr.labs.observability.dsl.enums.EventEnum;
 import br.com.vsjr.labs.observability.dsl.LOG;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Response;
@@ -40,7 +41,7 @@ public class HelloworldResource {
     @GET
     public String hello() {
         LOG
-                .registrando("Recurso Hello World invocado")
+                .registrando(EventEnum.LOGIN)
                 .em(HelloworldResource.class, "hello")
                 .porque("Solicitação de saudação recebida")
                 .como("API REST - GET /hello/world")
@@ -71,7 +72,7 @@ public class HelloworldResource {
             @QueryParam("cpf") String cpf) {
 
         LOG
-                .registrando("Consulta de pedido recebida")
+                .registrando(EventEnum.LOGIN)
                 .em(HelloworldResource.class, "buscarPedido")
                 .porque("Chamada à API de consulta de pedido")
                 .como("API REST - GET /hello/pedido")
@@ -98,7 +99,7 @@ public class HelloworldResource {
             return helloService.divide(a, b);
         } catch (Exception e) {
             LOG
-                    .registrando("Falha na operação de divisão")
+                    .registrando(EventEnum.LOGIN)
                     .em(HelloworldResource.class, "divide")
                     .porque("Erro propagado do serviço de divisão")
                     .como("API REST - POST /hello/divide")

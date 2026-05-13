@@ -52,7 +52,7 @@ public final class LOG implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
     /**
      * Descrição principal do evento de negócio que será registrada no log.
      */
-    private String evento;
+    private Event event;
 
     /**
      * Classe associada ao evento — usada para obter o logger JBoss correspondente.
@@ -89,7 +89,7 @@ public final class LOG implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
 
     /**
      * Construtor privado para forçar o uso do método estático de entrada da DSL
-     * {@link #registrando(String)}.
+     * {@link #registrando(Event)}.
      */
     private LOG() {
     }
@@ -102,9 +102,9 @@ public final class LOG implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
      * @param evento o que está acontecendo - ex: "Pedido criado", "Login falhou"
      * @return etapa seguinte, que exige a declaração do Where
      */
-    public static LogEtapas.EtapaOnde registrando(String evento) {
+    public static LogEtapas.EtapaOnde registrando(Event evento) {
         var builder = new LOG();
-        builder.evento = evento;
+        builder.event = evento;
         return builder;
     }
 
@@ -294,7 +294,7 @@ public final class LOG implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
      */
     private LogEvento criarEvento() {
         return new LogEvento(
-                normalizarTextoObrigatorio(evento, ValoresPadrao.EVENTO_NAO_INFORMADO, false),
+                normalizarTextoObrigatorio(event.getEvent(), ValoresPadrao.EVENTO_NAO_INFORMADO, false),
                 localizacao != null ? localizacao.classeSimples() : ValoresPadrao.LOCALIZACAO_DESCONHECIDA,
                 localizacao != null ? localizacao.metodo() : null,
                 motivo,

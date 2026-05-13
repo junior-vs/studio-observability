@@ -1,5 +1,6 @@
 package br.com.vsjr.labs.observability.interceptor;
 
+import br.com.vsjr.labs.observability.dsl.enums.EventError;
 import org.jboss.logging.MDC;
 
 import br.com.vsjr.labs.observability.CamposMdc;
@@ -70,7 +71,7 @@ public class TracingInterceptor {
             try {
                 gerenciador.encerrar(contextoSpan, spanIdPai);
             } catch (Exception otelEx) {
-                LOG.registrando("Falha ao encerrar span OTel")
+                LOG.registrando(EventError.EVENT_ERROR)
                         .em(TracingInterceptor.class, "rastrear")
                         .porque("Exceção durante encerramento de span OTel")
                         .como("Interceptor de rastreamento")

@@ -2,6 +2,7 @@ package br.com.vsjr.labs.example.rest;
 
 import br.com.vsjr.labs.observability.annotations.Logged;
 import br.com.vsjr.labs.observability.annotations.Rastreado;
+import br.com.vsjr.labs.observability.dsl.enums.EventEnum;
 import br.com.vsjr.labs.observability.dsl.LOG;
 import jakarta.enterprise.context.ApplicationScoped;
 
@@ -34,7 +35,7 @@ public class HelloService {
      */
     public String sayHello() {
         LOG
-                .registrando("Serviço Hello executado")
+                .registrando(EventEnum.LOGIN)
                 .em(HelloService.class, "sayHello")
                 .porque("Solicitação de saudação recebida")
                 .como("API REST - GET /hello/world")
@@ -60,7 +61,7 @@ public class HelloService {
     public String buscarPedido(String pedidoId, String token, String cpf) {
         if (pedidoId == null || pedidoId.isBlank()) {
             LOG
-                    .registrando("Identificador de pedido ausente")
+                    .registrando(EventEnum.LOGIN)
                     .em(HelloService.class, "buscarPedido")
                     .porque("pedidoId nulo ou vazio recebido na requisição")
                     .como("API REST - GET /hello/pedido")
@@ -70,7 +71,7 @@ public class HelloService {
         }
 
         LOG
-                .registrando("Buscando pedido")
+                .registrando(EventEnum.LOGIN)
                 .em(HelloService.class, "buscarPedido")
                 .porque("Consulta de pedido solicitada")
                 .como("API REST - GET /hello/pedido")
@@ -96,7 +97,7 @@ public class HelloService {
             return a / b;
         } catch (ArithmeticException e) {
             LOG
-                    .registrando("Erro de divisão")
+                    .registrando(EventEnum.LOGIN)
                     .em(HelloService.class, "divide")
                     .porque("Divisão por zero detectada")
                     .como("API REST - POST /hello/divide")
@@ -106,7 +107,7 @@ public class HelloService {
             return 0d;
         } catch (Exception e) {
             LOG
-                    .registrando("Erro inesperado na divisão")
+                    .registrando(EventEnum.ERROR_GENERIC)
                     .em(HelloService.class, "divide")
                     .porque("Exceção não tratada durante a operação de divisão")
                     .como("API REST - POST /hello/divide")

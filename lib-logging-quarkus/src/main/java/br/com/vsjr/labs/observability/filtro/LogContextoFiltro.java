@@ -4,6 +4,7 @@ import java.security.Principal;
 
 import br.com.vsjr.labs.observability.ValoresPadrao;
 import br.com.vsjr.labs.observability.context.GerenciadorContextoLog;
+import br.com.vsjr.labs.observability.dsl.enums.EventEnum;
 import br.com.vsjr.labs.observability.dsl.LOG;
 import br.com.vsjr.labs.observability.tracing.GerenciadorTracing;
 import jakarta.ws.rs.container.ContainerRequestContext;
@@ -55,8 +56,8 @@ public class LogContextoFiltro implements ContainerRequestFilter, ContainerRespo
         var contexto = gerenciador.inicializar(userId);
         gerenciadorTracing.sincronizarMdcRequisicao();
 
-        LOG
-                .registrando("Contexto de observability inicializado")
+            LOG
+                .registrando(EventEnum.CONTEXT_TRACE)
                 .em(LogContextoFiltro.class, "filter")
                 .comDetalhe("userId", contexto.userId())
                 .debug();
