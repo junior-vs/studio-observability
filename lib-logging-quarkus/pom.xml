@@ -4,7 +4,13 @@
     <groupId>br.com.vsjr.labs</groupId>
     <artifactId>lib-logging-quarkus</artifactId>
     <version>1.0.0-SNAPSHOT</version>
-    <packaging>quarkus</packaging>
+    <!--
+        Sprint 0 — Decisão de empacotamento: biblioteca comum Quarkus (jar).
+        Não é uma extensão Quarkus nem uma aplicação executável.
+        Consumidores adicionam esta biblioteca como dependência Maven normal.
+        O quarkus-maven-plugin é mantido sem <extensions> para suporte ao quarkus:dev.
+    -->
+    <packaging>jar</packaging>
 
     <parent>
         <groupId>br.com.vsjr.labs</groupId>
@@ -14,7 +20,7 @@
 
     <properties>
         <compiler-plugin.version>3.15.0</compiler-plugin.version>
-        <maven.compiler.release>25</maven.compiler.release>
+        <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <quarkus.platform.artifact-id>quarkus-bom</quarkus.platform.artifact-id>
@@ -37,6 +43,11 @@
     </dependencyManagement>
 
     <dependencies>
+        <!-- ================================================================
+             DEPENDÊNCIAS CORE DA BIBLIOTECA
+             Necessárias para o funcionamento dos interceptors, filtros,
+             DSL de logging, tracing e métricas opcionais.
+             ================================================================ -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-opentelemetry</artifactId>
@@ -66,48 +77,83 @@
             <artifactId>quarkus-junit</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- ================================================================
+             DEPENDÊNCIAS DE EXEMPLO — marcar como optional (Sprint 0)
+             Não pertencem ao core da biblioteca. Serão extraídas para um
+             módulo/projeto separado na Sprint 5.
+             Marcadas como <optional>true</optional> para não propagar a
+             dependência transitiva a consumidores desta biblioteca.
+             ================================================================ -->
+
+        <!-- REST: necessário apenas para HelloworldResource e HelloService (exemplo) -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-rest</artifactId>
+            <optional>true</optional>
         </dependency>
+
+        <!-- Info endpoint: exemplo de endpoint de informações -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-info</artifactId>
+            <optional>true</optional>
         </dependency>
+
+        <!-- REST Client: necessário apenas para exemplos de cliente HTTP -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-rest-client</artifactId>
+            <optional>true</optional>
         </dependency>
+
+        <!-- JFR: tracing via Java Flight Recorder — dev/observabilidade experimental -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-jfr</artifactId>
+            <optional>true</optional>
         </dependency>
-        <!-- quarkus-micrometer é transitivo via quarkus-micrometer-registry-prometheus -->
+
+        <!-- Dev Services de observabilidade: apenas para ambiente de desenvolvimento -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-observability-devservices</artifactId>
+            <optional>true</optional>
         </dependency>
+
+        <!-- REST Client Jackson: JSON para exemplos de cliente REST -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-rest-client-jackson</artifactId>
+            <optional>true</optional>
         </dependency>
+
+        <!-- Hibernate Validator: validação de request para exemplos REST -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-hibernate-validator</artifactId>
+            <optional>true</optional>
         </dependency>
+
+        <!-- REST Jackson: serialização JSON para exemplos de resource REST -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-rest-jackson</artifactId>
+            <optional>true</optional>
         </dependency>
+
         <!--
             Alternativa OTLP: substituir quarkus-micrometer-registry-prometheus por
             quarkus-micrometer-opentelemetry quando o OTel Collector é o único pipeline.
             Mutuamente exclusivo com registry-prometheus. Ver concepts/METRICS.md §16.
         -->
-        <!-- Scheduler — necessário para os exemplos de Gauge com @Scheduled em br.com.vsjr.labs.example.metrics -->
+
+        <!-- Scheduler: necessário apenas para os exemplos de Gauge com @Scheduled
+             em br.com.vsjr.labs.example.metrics. Extrair na Sprint 5. -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-scheduler</artifactId>
+            <optional>true</optional>
         </dependency>
 
 
@@ -119,7 +165,8 @@
                 <groupId>${quarkus.platform.group-id}</groupId>
                 <artifactId>quarkus-maven-plugin</artifactId>
                 <version>${quarkus.platform.version}</version>
-                <extensions>true</extensions>
+                <!-- extensions removido: packaging=jar não usa o ciclo de vida Quarkus.
+                     O plugin é mantido para suportar quarkus:dev em tempo de desenvolvimento. -->
             </plugin>
             <plugin>
                 <artifactId>maven-compiler-plugin</artifactId>
@@ -132,7 +179,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>${surefire-plugin.version}</version>
                 <configuration>
-                    <argLine>@{argLine}</argLine>
+                    <!-- argLine: deixado vazio; JaCoCo pode sobrescrever via ${argLine} na Sprint 6 -->
                     <systemPropertyVariables>
                         <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
                         <maven.home>${maven.home}</maven.home>
@@ -151,7 +198,6 @@
                     </execution>
                 </executions>
                 <configuration>
-                    <argLine>@{argLine}</argLine>
                     <systemPropertyVariables>
                         <native.image.path>${project.build.directory}/${project.build.finalName}-runner</native.image.path>
                         <java.util.logging.manager>org.jboss.logmanager.LogManager</java.util.logging.manager>
