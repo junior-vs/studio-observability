@@ -16,7 +16,7 @@ package br.com.vsjr.labs.observability;
  *       {@link br.com.vsjr.labs.observability.interceptor.LogInterceptor} via
  *       {@link br.com.vsjr.labs.observability.context.enriquecedor.MetadadosEnriquecedorContexto}.</li>
  *   <li><b>DSL</b> — declarados pelo desenvolvedor via cadeia
- *       {@link br.com.vsjr.labs.observability.dsl.LOG} ({@code .em()}, {@code .porque()},
+ *       {@link br.com.vsjr.labs.observability.dsl.Log} ({@code .em()}, {@code .aqui()}, {@code .porque()},
  *       {@code .como()}).</li>
  * </ol>
  *
@@ -64,7 +64,7 @@ public enum CamposMdc {
 
     // -------------------------------------------------------------------------
     // 3. Campos da DSL
-    //    Fonte: LOG.em(), LOG.porque(), LOG.como()
+    //    Fonte: Log.em(), Log.aqui(), Log.porque(), Log.como()
     // -------------------------------------------------------------------------
 
     /** Nome da classe onde o evento ocorreu — declarado via {@code .em(Classe.class, ...)}. */
@@ -76,8 +76,8 @@ public enum CamposMdc {
     /** Causa ou motivação de negócio — declarado via {@code .porque("motivo")}. */
     LOG_MOTIVO("log_motivo"),
 
-    /** Canal ou mecanismo pelo qual o evento chegou — declarado via {@code .como("canal")}. */
-    LOG_CANAL("log_canal"),
+    /** Ponto de entrada pelo qual o evento chegou — declarado via {@code .como(entrypoint)}. */
+    LOG_ENTRYPOINT("log_entrypoint"),
 
     // -------------------------------------------------------------------------
     // 4. Tags de Métricas

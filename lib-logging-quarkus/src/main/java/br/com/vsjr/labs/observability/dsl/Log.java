@@ -10,6 +10,8 @@ import br.com.vsjr.labs.observability.security.SanitizadorDados;
 
 import java.util.LinkedHashMap;
 import java.util.Locale;
+import java.util.Objects;
+import java.util.Optional;
 
 /**
  * Ponto de entrada público da DSL de logging sistemático para Quarkus.
@@ -20,19 +22,27 @@ import java.util.Locale;
  *
  * <p><b>Uso mínimo obrigatório (What + Where):</b></p>
  * <pre>{@code
- * LOG
- *     .registrando("Pedido criado")
+ * Log
+ *     .registrando(EventEnum.PEDIDO_CRIADO)
  *     .em(PedidoService.class, "criar")
+ *     .info();
+ * }</pre>
+ *
+ * <p><b>Uso mínimo com localização automática:</b></p>
+ * <pre>{@code
+ * Log
+ *     .registrando(EventEnum.PEDIDO_CRIADO)
+ *     .aqui()
  *     .info();
  * }</pre>
  *
  * <p><b>Uso completo com todas as dimensões do 5W1H:</b></p>
  * <pre>{@code
- * LOG
- *     .registrando("Pagamento recusado")
+ * Log
+ *     .registrando(EventError.PAGAMENTO_RECUSADO)
  *     .em(PagamentoService.class, "processar")
  *     .porque("Saldo insuficiente no gateway")
- *     .como("API REST - POST /pagamentos")
+ *     .como(EntrypointEnum.API_REST)
  *     .comDetalhe("pedidoId",   pedido.getId())
  *     .comDetalhe("valor",      pedido.getValor())
  *     .comDetalhe("token",      request.token())  // <- mascarado: "****"
@@ -47,7 +57,7 @@ import java.util.Locale;
  * e {@link LogEtapas.EtapaOpcional}, garantindo uma construção guiada do evento
  * até sua emissão.</p>
  */
-public final class LOG implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
+public final class Log implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
 
     /**
      * Descrição principal do evento de negócio que será registrada no log.
@@ -57,7 +67,7 @@ public final class LOG implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
     /**
      * Classe associada ao evento — usada para obter o logger JBoss correspondente.
      * {@code null} quando o desenvolvedor não chamou {@link #em}; nesse caso o
-     * logger é obtido a partir de {@link LOG} e o nome da classe no evento é
+     * logger é obtido a partir de {@link Log} e o nome da classe no evento é
      * {@code "desconhecido"}.
      */
     private Class<?> classeAlvo;
@@ -75,9 +85,9 @@ public final class LOG implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
     private String motivo;
 
     /**
-     * Canal, meio ou forma de execução associada ao evento.
+     * Ponto de entrada, meio ou forma de execução associada ao evento.
      */
-    private String canal;
+    private String entrypoint;
 
     /**
      * Detalhes complementares do evento.
@@ -91,7 +101,7 @@ public final class LOG implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
      * Construtor privado para forçar o uso do método estático de entrada da DSL
      * {@link #registrando(Event)}.
      */
-    private LOG() {
+    private Log() {
     }
 
     // -- Ponto de entrada - What -----------------------------------------------
@@ -103,8 +113,8 @@ public final class LOG implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
      * @return etapa seguinte, que exige a declaração do Where
      */
     public static LogEtapas.EtapaOnde registrando(Event evento) {
-        var builder = new LOG();
-        builder.event = evento;
+        var builder = new Log();
+        builder.event = Objects.requireNonNull(evento, "evento nao pode ser nulo");
         return builder;
     }
 
@@ -131,6 +141,24 @@ public final class LOG implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
         return this;
     }
 
+    /**
+     * Captura automaticamente a classe e o método do ponto de chamada.
+     *
+     * <p>Frames internos da própria DSL são ignorados para que o Where represente
+     * o consumidor real da biblioteca.</p>
+     */
+    @Override
+    public LogEtapas.EtapaOpcional aqui() {
+        var localizacaoCapturada = capturarLocalizacaoChamada();
+        this.classeAlvo = localizacaoCapturada
+                .<Class<?>>map(LocalizacaoChamada::classe)
+                .orElse(Log.class);
+        this.localizacao = localizacaoCapturada
+                .map(localizacaoCapturadaPilha -> LocalizacaoMetodo.of(localizacaoCapturadaPilha.classe(), localizacaoCapturadaPilha.metodo()))
+                .orElseGet(() -> LocalizacaoMetodo.of(Log.class, ValoresPadrao.LOCALIZACAO_DESCONHECIDA));
+        return this;
+    }
+
     // -- Etapas opcionais -------------------------------------------------------
 
     /**
@@ -146,14 +174,16 @@ public final class LOG implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
     }
 
     /**
-     * Informa o canal, meio ou forma pela qual o evento aconteceu.
+     * Informa o ponto de entrada pelo qual o evento aconteceu.
      *
-     * @param canal descrição do canal, como "api rest", "mensageria", "batch"
+     * @param entrypoint ponto de entrada canônico, como API_REST, KAFKA_CONSUMER ou SCHEDULER
      * @return a própria etapa opcional para encadeamento fluente
      */
     @Override
-    public LogEtapas.EtapaOpcional como(String canal) {
-        this.canal = normalizarTextoOpcional(canal, true);
+    public LogEtapas.EtapaOpcional como(Entrypoint entrypoint) {
+        this.entrypoint = entrypoint != null
+                ? normalizarTextoOpcional(entrypoint.getEntrypoint(), false)
+                : null;
         return this;
     }
 
@@ -234,7 +264,7 @@ public final class LOG implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
     /**
      * Monta o {@link br.com.vsjr.labs.observability.dsl.LogEvento} e o emite via JBoss Logging.
      *
-     * <p>As dimensões estruturais (classe, método, motivo, canal) são inseridas
+     * <p>As dimensões estruturais (classe, método, motivo, entrypoint) são inseridas
      * no MDC imediatamente antes da emissão e removidas logo após - garantindo
      * que campos do evento atual não contaminem logs subsequentes na mesma thread.</p>
      *
@@ -246,7 +276,7 @@ public final class LOG implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
      */
     private void emitir(Logger.Level level, Throwable causa) {
         var eventoLog = criarEvento();
-        var classeLogger = classeAlvo != null ? classeAlvo : LOG.class;
+        var classeLogger = classeAlvo != null ? classeAlvo : Log.class;
         var logger = Logger.getLogger(classeLogger);
         if (!logger.isEnabled(level)) {
             return;
@@ -258,8 +288,8 @@ public final class LOG implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
         if (eventoLog.motivo() != null) {
             MDC.put(CamposMdc.LOG_MOTIVO.chave(), eventoLog.motivo());
         }
-        if (eventoLog.canal() != null) {
-            MDC.put(CamposMdc.LOG_CANAL.chave(), eventoLog.canal());
+        if (eventoLog.entrypoint() != null) {
+            MDC.put(CamposMdc.LOG_ENTRYPOINT.chave(), eventoLog.entrypoint());
         }
 
         // Detalhes de negócio: cada entrada vira um campo JSON de primeiro nível
@@ -278,7 +308,7 @@ public final class LOG implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
             MDC.remove(CamposMdc.LOG_CLASSE.chave());
             MDC.remove(CamposMdc.LOG_METODO.chave());
             MDC.remove(CamposMdc.LOG_MOTIVO.chave());
-            MDC.remove(CamposMdc.LOG_CANAL.chave());
+            MDC.remove(CamposMdc.LOG_ENTRYPOINT.chave());
             eventoLog.detalhes().keySet().forEach(chave -> MDC.remove(CamposMdc.PREFIXO_DETALHE + chave));
         }
     }
@@ -287,8 +317,9 @@ public final class LOG implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
      * Cria uma representação imutável do evento atual a partir do estado acumulado
      * pela DSL.
      *
-     * <p>Se a classe não for informada, usa {@code "desconhecido"} como nome técnico.
-     * Se o evento vier nulo ou vazio, usa {@code "evento_nao_informado"} como fallback.</p>
+    * <p>Se a classe não for informada, usa {@code "desconhecido"} como nome técnico.
+    * O evento é obrigatório e validado em {@link #registrando(Event)}; se o texto do evento
+    * vier vazio, usa {@code "evento_nao_informado"} como fallback.</p>
      *
      * @return instância de {@link LogEvento} pronta para ser emitida
      */
@@ -298,9 +329,25 @@ public final class LOG implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
                 localizacao != null ? localizacao.classeSimples() : ValoresPadrao.LOCALIZACAO_DESCONHECIDA,
                 localizacao != null ? localizacao.metodo() : null,
                 motivo,
-                canal,
+                entrypoint,
                 detalhes
         );
+    }
+
+    private static Optional<LocalizacaoChamada> capturarLocalizacaoChamada() {
+        return StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE)
+                .walk(frames -> frames
+                        .filter(frame -> !ehFrameInterno(frame.getClassName()))
+                        .findFirst()
+                        .map(frame -> new LocalizacaoChamada(frame.getDeclaringClass(), frame.getMethodName())));
+    }
+
+    private static boolean ehFrameInterno(String className) {
+        return className.equals(Log.class.getName())
+                || className.equals(LogEtapas.class.getName());
+    }
+
+    private record LocalizacaoChamada(Class<?> classe, String metodo) {
     }
 
     /**

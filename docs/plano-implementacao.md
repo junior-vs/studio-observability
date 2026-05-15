@@ -43,6 +43,8 @@ Implementacao atual em `lib-logging-quarkus`:
 
 ## Sprint 0 - Preparacao, Baseline e Decisoes de Build
 
+**Status:** Finalizada.
+
 ### Objetivo
 
 Preparar o projeto para evolucao segura: definir alvo Java 21, formato do artefato, estrategia de testes e baseline de compilacao.
@@ -70,20 +72,22 @@ Baseline tecnico do projeto definido, com build alvo Java 21, estrategia de empa
 
 ### Checklist
 
-- [ ] Decisao registrada sobre `packaging` final da biblioteca.
-- [ ] Java 21 definido no build.
-- [ ] Dependencias de runtime da biblioteca separadas das dependencias de exemplo.
-- [ ] Estrutura de testes definida.
-- [ ] Comando oficial de validacao documentado.
+- [x] Decisao registrada sobre `packaging` final da biblioteca.
+- [x] Java 21 definido no build.
+- [x] Dependencias de runtime da biblioteca separadas das dependencias de exemplo.
+- [x] Estrutura de testes definida.
+- [x] Comando oficial de validacao documentado.
 
 ### Criterios de Aceite
 
-- O projeto possui decisao explicita de empacotamento compativel com biblioteca comum Quarkus.
-- O build alvo e Java 21.
-- Existe lista clara de dependencias que pertencem ao core da biblioteca.
-- Existe plano de testes executavel para as sprints seguintes.
+- [x] O projeto possui decisao explicita de empacotamento compativel com biblioteca comum Quarkus.
+- [x] O build alvo e Java 21.
+- [x] Existe lista clara de dependencias que pertencem ao core da biblioteca.
+- [x] Existe plano de testes executavel para as sprints seguintes.
 
 ## Sprint 1 - API Publica da DSL: `Log`, `Event`, `Entrypoint` e `Where`
+
+**Status:** Finalizada.
 
 ### Objetivo
 
@@ -121,17 +125,17 @@ DSL publica alinhada ao contrato documentado e protegida por tipos: eventos e en
 
 ### Checklist
 
-- [ ] `Log.registrando(Event)` e o ponto de entrada publico.
-- [ ] Nao ha uso publico de `LOG` em exemplos ou documentacao tecnica nova.
-- [ ] `.aqui()` existe na etapa correta da DSL.
-- [ ] `.como(...)` aceita `Entrypoint`, nao `String`.
-- [ ] `LogEvento` usa `entrypoint`.
-- [ ] `CamposMdc` expoe `LOG_ENTRYPOINT`.
-- [ ] Exemplos de codigo usam `EventEnum`/eventos de dominio e `EntrypointEnum`.
+- [x] `Log.registrando(Event)` e o ponto de entrada publico.
+- [x] Nao ha uso publico de `LOG` em exemplos ou documentacao tecnica nova.
+- [x] `.aqui()` existe na etapa correta da DSL.
+- [x] `.como(...)` aceita `Entrypoint`, nao `String`.
+- [x] `LogEvento` usa `entrypoint`.
+- [x] `CamposMdc` expoe `LOG_ENTRYPOINT`.
+- [x] Exemplos de codigo usam `EventEnum`/eventos de dominio e `EntrypointEnum`.
 
 ### Criterios de Aceite
 
-- Codigo consumidor consegue compilar:
+- [x] Codigo consumidor consegue compilar:
 
 ```java
 Log.registrando(EventEnum.EVENTO_GENERICO)
@@ -140,11 +144,11 @@ Log.registrando(EventEnum.EVENTO_GENERICO)
     .info();
 ```
 
-- Codigo consumidor nao consegue chamar terminadores antes de declarar `Where`.
-- Codigo consumidor nao consegue passar `String` diretamente em `.registrando(...)`.
-- Codigo consumidor nao consegue passar `String` diretamente em `.como(...)`.
-- Evento com `.aqui()` emite `log_classe` e `log_metodo` do chamador real.
-- Evento com `.como(EntrypointEnum.API_REST)` emite `log_entrypoint=API_REST`.
+- [x] Codigo consumidor nao consegue chamar terminadores antes de declarar `Where`.
+- [x] Codigo consumidor nao consegue passar `String` diretamente em `.registrando(...)`.
+- [x] Codigo consumidor nao consegue passar `String` diretamente em `.como(...)`.
+- [x] Evento com `.aqui()` emite `log_classe` e `log_metodo` do chamador real.
+- [x] Evento com `.como(EntrypointEnum.API_REST)` emite `log_entrypoint=API_REST`.
 
 ## Sprint 2 - Contexto, MDC e Emissao Estruturada
 
@@ -440,4 +444,3 @@ Versao candidata da biblioteca com API publica estabilizada, testes de contrato 
 - Falhas de observabilidade nao interrompem fluxo de negocio.
 - Testes automatizados cobrem os contratos principais.
 - README, especificacao e documentacao conceitual estao alinhados com a implementacao.
-

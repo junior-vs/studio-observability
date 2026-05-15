@@ -6,23 +6,24 @@ import br.com.vsjr.labs.observability.security.SanitizadorDados;
 /**
  * Define as etapas da Fluent Interface da DSL de logging sistemático.
  *
- * <p>Usa {@code sealed interface} do Java 21: apenas {@link LOG}
+ * <p>Usa {@code sealed interface} do Java 21: apenas {@link Log}
  * pode implementar essas interfaces, garantindo que o contrato da DSL
  * não possa ser alterado ou estendido acidentalmente por código externo.</p>
  *
  * <p>Fluxo de chamadas com validação em tempo de compilação:</p>
  * <pre>
- *   LOG
+ *   Log
  *     .registrando(evento)           // What  — obrigatório, retorna EtapaOnde
- *     .em(classe, metodo)            // Where — obrigatório, retorna EtapaOpcional
+ *     .em(classe, metodo)            // Where — explícito, retorna EtapaOpcional
+ *     // ou .aqui()                  // Where — automático, retorna EtapaOpcional
  *     [ .porque(motivo)         ]    // Why   — opcional
- *     [ .como(canal)            ]    // How   — opcional
+ *     [ .como(entrypoint)       ]    // How   — opcional
  *     [ .comDetalhe(chave, val) ]*   // extra — zero ou mais chamadas
  *     .info() | .debug() | .warn() | .erro(ex)
  * </pre>
  *
  * <p>O compilador impede chamar {@code .info()} sem passar por
- * {@code .registrando()} e {@code .em()} — logs incompletos são
+ * {@code .registrando()} e {@code .em()} ou {@code .aqui()} — logs incompletos são
  * erros de compilação, não bugs em produção.</p>
  */
 public final class LogEtapas {
@@ -34,7 +35,7 @@ public final class LogEtapas {
      * Etapa 1 — What capturado.
      * Exige a declaração do Where antes de qualquer outra operação.
      */
-    public sealed interface EtapaOnde permits LOG {
+    public sealed interface EtapaOnde permits Log {
 
         /**
          * Declara o Where: localização técnica do evento no código.
@@ -43,6 +44,11 @@ public final class LogEtapas {
          * @param metodo nome do método
          */
         EtapaOpcional em(Class<?> classe, String metodo);
+
+        /**
+         * Declara o Where automaticamente a partir da classe e método do ponto de chamada.
+         */
+        EtapaOpcional aqui();
     }
 
     /**
@@ -50,7 +56,7 @@ public final class LogEtapas {
      * O observability pode ser emitido ou enriquecido com qualquer combinação de
      * dimensões opcionais antes do terminador.
      */
-    public sealed interface EtapaOpcional permits LOG {
+    public sealed interface EtapaOpcional permits Log {
 
 
         /**
@@ -62,12 +68,12 @@ public final class LogEtapas {
         EtapaOpcional porque(String motivo);
 
         /**
-         * Declara o How: canal de origem do evento.
-         * How: canal ou mecanismo pelo qual o evento chegou ao sistema.
+         * Declara o How: ponto de entrada de origem do evento.
+         * How: entrypoint pelo qual o evento chegou ao sistema.
          *
-         * @param canal descrição do canal (ex: "API REST — POST /pedidos")
+         * @param entrypoint ponto de entrada canônico
          */
-        EtapaOpcional como(String canal);
+        EtapaOpcional como(Entrypoint entrypoint);
 
         /**
          * Adiciona um detalhe extra tipado ao observability.

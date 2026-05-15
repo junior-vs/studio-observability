@@ -2,13 +2,14 @@ package br.com.vsjr.labs.observability.interceptor;
 
 import br.com.vsjr.labs.observability.dsl.enums.EventEnum;
 import br.com.vsjr.labs.observability.dsl.enums.EventError;
+import br.com.vsjr.labs.observability.dsl.enums.EntrypointEnum;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import br.com.vsjr.labs.observability.CamposMdc;
 import br.com.vsjr.labs.observability.ValoresPadrao;
 import br.com.vsjr.labs.observability.annotations.Logged;
 import br.com.vsjr.labs.observability.context.GerenciadorContextoLog;
-import br.com.vsjr.labs.observability.dsl.LOG;
+import br.com.vsjr.labs.observability.dsl.Log;
 import br.com.vsjr.labs.observability.security.LocalizacaoMetodo;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
@@ -104,9 +105,9 @@ public class LogInterceptor {
                     CamposMdc.EXCECAO.chave(), erro.getClass().getSimpleName()).increment();
         } catch (Exception metricaFalhou) {
 
-            LOG.registrando(EventEnum.EVENT_ERROR)
+            Log.registrando(EventEnum.EVENT_ERROR)
                     .em(this.getClass(), "registrarFalha")
-                    .como("Métrica de falha")
+                    .como(EntrypointEnum.INTERNO)
                     .porque(String.format("Falha ao registrar métrica: %s", metricaFalhou.getMessage()))
                     .warn();
         }
@@ -125,9 +126,9 @@ public class LogInterceptor {
                     .register(meterRegistry));
         } catch (Exception metricaFalhou) {
 
-            LOG.registrando(EventError.EVENT_ERROR)
+            Log.registrando(EventError.EVENT_ERROR)
                     .em(this.getClass(), "registrarExecucao")
-                    .como("Métrica de execução")
+                    .como(EntrypointEnum.INTERNO)
                     .porque(String.format("Falha ao registrar métrica: %s", metricaFalhou.getMessage()))
                     .warn();
         }

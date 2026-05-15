@@ -16,7 +16,7 @@ import java.util.Map;
  *   <li>{@code classe}  → <b>Where</b>: localização técnica</li>
  *   <li>{@code metodo}  → <b>Where</b>: método específico</li>
  *   <li>{@code motivo}  → <b>Why</b>: causa de negócio (opcional)</li>
- *   <li>{@code canal}   → <b>How</b>: canal de origem (opcional)</li>
+ *   <li>{@code entrypoint} → <b>How</b>: ponto de entrada de origem (opcional)</li>
  *   <li>{@code detalhes}→ contexto adicional tipado</li>
  * </ul>
  *
@@ -39,7 +39,7 @@ import java.util.Map;
  *   "log_classe":       "PedidoService",
  *   "log_metodo":       "criar",
  *   "log_motivo":       "Solicitação do cliente via checkout",
- *   "log_canal":        "API REST — POST /pedidos",
+ *   "log_entrypoint":   "API_REST",
  *   "detalhe_pedidoId": "4821",
  *   "detalhe_valor":    "349.90"
  * }
@@ -49,7 +49,7 @@ import java.util.Map;
  * @param classe   nome simples da classe (Where)
  * @param metodo   nome do método (Where)
  * @param motivo   causa de negócio (Why) — pode ser {@code null}
- * @param canal    canal de origem (How) — pode ser {@code null}
+ * @param entrypoint ponto de entrada de origem (How) — pode ser {@code null}
  * @param detalhes mapa ordenado de contexto adicional — nunca {@code null}
  */
 public record LogEvento(
@@ -57,7 +57,7 @@ public record LogEvento(
         String classe,
         String metodo,
         String motivo,
-        String canal,
+        String entrypoint,
         Map<String, Object> detalhes
 ) {
     /**
@@ -69,7 +69,7 @@ public record LogEvento(
         classe = normalizarObrigatorio(classe, ValoresPadrao.LOCALIZACAO_DESCONHECIDA, true);
         metodo = normalizarObrigatorio(metodo, ValoresPadrao.LOCALIZACAO_DESCONHECIDA, true);
         motivo = normalizarOpcional(motivo, true);
-        canal = normalizarOpcional(canal, true);
+        entrypoint = normalizarOpcional(entrypoint, false);
 
         if (detalhes == null || detalhes.isEmpty()) {
             detalhes = Map.of();

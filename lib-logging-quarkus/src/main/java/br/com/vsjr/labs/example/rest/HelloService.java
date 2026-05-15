@@ -2,12 +2,13 @@ package br.com.vsjr.labs.example.rest;
 
 import br.com.vsjr.labs.observability.annotations.Logged;
 import br.com.vsjr.labs.observability.annotations.Rastreado;
+import br.com.vsjr.labs.observability.dsl.enums.EntrypointEnum;
 import br.com.vsjr.labs.observability.dsl.enums.EventEnum;
-import br.com.vsjr.labs.observability.dsl.LOG;
+import br.com.vsjr.labs.observability.dsl.Log;
 import jakarta.enterprise.context.ApplicationScoped;
 
 /**
- * Serviço de exemplo que demonstra todas as funcionalidades da DSL {@link LOG}.
+ * Serviço de exemplo que demonstra todas as funcionalidades da DSL {@link Log}.
  *
  * <p>A anotação {@link Logged} na classe ativa o {@code LogInterceptor} em todos os
  * métodos: injeta {@code userId}, {@code traceId}, {@code spanId}, {@code classe} e
@@ -34,11 +35,11 @@ public class HelloService {
      * Demonstra o terminador {@code info()} com as dimensões Why e How.
      */
     public String sayHello() {
-        LOG
+        Log
                 .registrando(EventEnum.LOGIN)
                 .em(HelloService.class, "sayHello")
                 .porque("Solicitação de saudação recebida")
-                .como("API REST - GET /hello/world")
+                .como(EntrypointEnum.API_REST)
                 .info();
 
         return "Hello World!";
@@ -60,21 +61,21 @@ public class HelloService {
      */
     public String buscarPedido(String pedidoId, String token, String cpf) {
         if (pedidoId == null || pedidoId.isBlank()) {
-            LOG
+            Log
                     .registrando(EventEnum.LOGIN)
                     .em(HelloService.class, "buscarPedido")
                     .porque("pedidoId nulo ou vazio recebido na requisição")
-                    .como("API REST - GET /hello/pedido")
+                    .como(EntrypointEnum.API_REST)
                     .comDetalhe("cpf", cpf)            // → "[PROTEGIDO]"
                     .warn();
             return "pedido não encontrado";
         }
 
-        LOG
+        Log
                 .registrando(EventEnum.LOGIN)
                 .em(HelloService.class, "buscarPedido")
                 .porque("Consulta de pedido solicitada")
-                .como("API REST - GET /hello/pedido")
+                .como(EntrypointEnum.API_REST)
                 .comDetalhe("pedidoId", pedidoId)      // → valor real
                 .comDetalhe("token", token)            // → "****"
                 .comDetalhe("cpf", cpf)                // → "[PROTEGIDO]"
@@ -96,21 +97,21 @@ public class HelloService {
         try {
             return a / b;
         } catch (ArithmeticException e) {
-            LOG
+            Log
                     .registrando(EventEnum.LOGIN)
                     .em(HelloService.class, "divide")
                     .porque("Divisão por zero detectada")
-                    .como("API REST - POST /hello/divide")
+                    .como(EntrypointEnum.API_REST)
                     .comDetalhe("dividendo", a)
                     .comDetalhe("divisor", b)
                     .erro(e);
             return 0d;
         } catch (Exception e) {
-            LOG
+            Log
                     .registrando(EventEnum.ERROR_GENERIC)
                     .em(HelloService.class, "divide")
                     .porque("Exceção não tratada durante a operação de divisão")
-                    .como("API REST - POST /hello/divide")
+                    .como(EntrypointEnum.API_REST)
                     .comDetalhe("dividendo", a)
                     .comDetalhe("divisor", b)
                     .erroERelanca(e);

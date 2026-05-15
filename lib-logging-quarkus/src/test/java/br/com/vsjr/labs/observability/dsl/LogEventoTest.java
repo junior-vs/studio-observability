@@ -70,9 +70,15 @@ class LogEventoTest {
     }
 
     @Test
-    void canalNulo_deveRetornarNulo() {
+    void entrypointNulo_deveRetornarNulo() {
         var evento = new LogEvento("x", "C", "m", null, null, Map.of());
-        assertNull(evento.canal());
+        assertNull(evento.entrypoint());
+    }
+
+    @Test
+    void entrypoint_devePreservarCasoOriginal() {
+        var evento = new LogEvento("x", "C", "m", null, "API_REST", Map.of());
+        assertEquals("API_REST", evento.entrypoint());
     }
 
     // ── Detalhes ─────────────────────────────────────────────────────────────

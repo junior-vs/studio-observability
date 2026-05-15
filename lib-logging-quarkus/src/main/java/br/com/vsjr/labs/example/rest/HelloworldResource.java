@@ -2,8 +2,9 @@ package br.com.vsjr.labs.example.rest;
 
 import br.com.vsjr.labs.observability.annotations.Logged;
 import br.com.vsjr.labs.observability.annotations.Rastreado;
+import br.com.vsjr.labs.observability.dsl.enums.EntrypointEnum;
 import br.com.vsjr.labs.observability.dsl.enums.EventEnum;
-import br.com.vsjr.labs.observability.dsl.LOG;
+import br.com.vsjr.labs.observability.dsl.Log;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Response;
 
@@ -40,11 +41,11 @@ public class HelloworldResource {
     @Path("/world")
     @GET
     public String hello() {
-        LOG
+        Log
                 .registrando(EventEnum.LOGIN)
                 .em(HelloworldResource.class, "hello")
                 .porque("Solicitação de saudação recebida")
-                .como("API REST - GET /hello/world")
+                .como(EntrypointEnum.API_REST)
                 .info();
         return helloService.sayHello();
     }
@@ -71,11 +72,11 @@ public class HelloworldResource {
             @QueryParam("token") String token,
             @QueryParam("cpf") String cpf) {
 
-        LOG
+        Log
                 .registrando(EventEnum.LOGIN)
                 .em(HelloworldResource.class, "buscarPedido")
                 .porque("Chamada à API de consulta de pedido")
-                .como("API REST - GET /hello/pedido")
+                .como(EntrypointEnum.API_REST)
                 .comDetalhe("pedidoId", pedidoId)   // → valor real
                 .comDetalhe("token", token)         // → "****"
                 .comDetalhe("cpf", cpf)             // → "[PROTEGIDO]"
@@ -98,11 +99,11 @@ public class HelloworldResource {
         try {
             return helloService.divide(a, b);
         } catch (Exception e) {
-            LOG
+            Log
                     .registrando(EventEnum.LOGIN)
                     .em(HelloworldResource.class, "divide")
                     .porque("Erro propagado do serviço de divisão")
-                    .como("API REST - POST /hello/divide")
+                    .como(EntrypointEnum.API_REST)
                     .comDetalhe("dividendo", a)
                     .comDetalhe("divisor", b)
                     .erro(e);

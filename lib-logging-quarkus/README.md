@@ -1,7 +1,7 @@
 # lib-logging-quarkus
 
 [![Build](https://img.shields.io/github/actions/workflow/status/vsjrlabs/studio-observability/build.yml?style=flat-square)](../../actions)
-[![Java](https://img.shields.io/badge/Java-25-ED8B00?style=flat-square&logo=openjdk)](https://openjdk.org)
+[![Java](https://img.shields.io/badge/Java-21-ED8B00?style=flat-square&logo=openjdk)](https://openjdk.org)
 [![Quarkus](https://img.shields.io/badge/Quarkus-3.32-4695EB?style=flat-square&logo=quarkus)](https://quarkus.io)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue?style=flat-square)](LICENSE)
 
@@ -11,7 +11,7 @@ The library enforces a structured **5W1H** logging contract at compile time usin
 
 ## Features
 
-- **Compile-time-safe DSL** — `LOG.registrando().em().[porque().[como().[comDetalhe()]*]].info()|debug()|warn()|erro()` guided by sealed interfaces
+- **Compile-time-safe DSL** — `Log.registrando(Event).em()|aqui().[porque().[como(Entrypoint).[comDetalhe()]*]].info()|debug()|warn()|erro()` guided by sealed interfaces
 - **CDI interceptors** — `@Logged` for MDC enrichment and optional Micrometer metrics; `@Rastreado` for OTel child span creation
 - **Automatic PII and credential masking** — `token`, `senha`, `cpf`, `email`, and similar keys are redacted before logging, with no extra configuration
 - **Extensible enrichment pipelines** — add `EnriquecedorContexto` and `EnriquecedorTracing` beans to enrich MDC and span attributes without modifying library code
@@ -23,7 +23,7 @@ The library enforces a structured **5W1H** logging contract at compile time usin
 
 | Tool | Version |
 |---|---|
-| Java | 25+ |
+| Java | 21+ |
 | Quarkus | 3.32+ |
 | Maven | 3.9+ |
 
@@ -54,21 +54,27 @@ Observe that `token` is logged as `****` and `cpf` as `[PROTEGIDO]` in the JSON 
 
 ### Logging DSL
 
-Use `LOG` as the single entry point for all structured log events. Every call must follow the enforced sequence:
+Use `Log` as the single entry point for all structured log events. Every call must follow the enforced sequence:
 
 ```java
 // Minimum valid usage — What + Where
-LOG
-    .registrando("Order created")
+Log
+    .registrando(OrderEvent.ORDER_CREATED)
     .em(OrderService.class, "create")
     .info();
 
+// Minimum valid usage with automatic Where capture
+Log
+    .registrando(OrderEvent.ORDER_CREATED)
+    .aqui()
+    .info();
+
 // Full 5W1H usage
-LOG
-    .registrando("Payment declined")
+Log
+    .registrando(PaymentEvent.PAYMENT_DECLINED)
     .em(PaymentService.class, "process")
     .porque("Insufficient balance in gateway")
-    .como("REST API — POST /payments")
+    .como(EntrypointEnum.API_REST)
     .comDetalhe("orderId",  order.getId())     // → real value
     .comDetalhe("amount",   order.getAmount()) // → real value
     .comDetalhe("token",    request.token())   // → "****" (auto-masked)
@@ -78,10 +84,10 @@ LOG
 
 | Method | Role | Required |
 |---|---|---|
-| `registrando(evento)` | What — event description | Yes |
-| `em(classe, metodo)` | Where — technical location | Yes |
+| `registrando(evento)` | What — event contract (`Event`) | Yes |
+| `em(classe, metodo)` / `aqui()` | Where — technical location | Yes |
 | `porque(motivo)` | Why — business reason | No |
-| `como(canal)` | How — channel or mechanism | No |
+| `como(entrypoint)` | How — entrypoint contract (`Entrypoint`) | No |
 | `comDetalhe(chave, valor)` | Extra structured fields | No, repeatable |
 | `info()` / `debug()` / `warn()` / `erro(ex)` | Log level terminator | Yes (one) |
 
@@ -154,11 +160,11 @@ All canonical MDC keys are declared in `CamposMdc`. Never use raw string literal
 | `applicationName` | `GerenciadorContextoLog` | Value of `quarkus.application.name` |
 | `classe` | `MetadadosEnriquecedorContexto` | Simple name of the `@Logged` class |
 | `metodo` | `MetadadosEnriquecedorContexto` | Name of the `@Logged` method |
-| `log_classe` | `LOG.em()` | DSL-declared class name |
-| `log_metodo` | `LOG.em()` | DSL-declared method name |
-| `log_motivo` | `LOG.porque()` | Business reason |
-| `log_canal` | `LOG.como()` | Channel or mechanism |
-| `detalhe_*` | `LOG.comDetalhe()` | Domain-specific extra fields (prefixed dynamically) |
+| `log_classe` | `Log.em()` / `Log.aqui()` | DSL-declared or automatically captured class name |
+| `log_metodo` | `Log.em()` / `Log.aqui()` | DSL-declared or automatically captured method name |
+| `log_motivo` | `Log.porque()` | Business reason |
+| `log_entrypoint` | `Log.como()` | Entrypoint or mechanism |
+| `detalhe_*` | `Log.comDetalhe()` | Domain-specific extra fields (prefixed dynamically) |
 
 ## Extending the library
 

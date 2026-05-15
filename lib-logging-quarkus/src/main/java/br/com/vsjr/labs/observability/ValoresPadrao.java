@@ -65,7 +65,7 @@ public final class ValoresPadrao {
 
     /**
      * Descrição do evento quando a DSL é construída sem chamar
-     * {@link br.com.vsjr.labs.observability.dsl.LOG#registrando(br.com.vsjr.labs.observability.dsl.Event)} com valor válido.
+     * {@link br.com.vsjr.labs.observability.dsl.Log#registrando(br.com.vsjr.labs.observability.dsl.Event)} com valor válido.
      * Inserido no campo {@code message} do log estruturado.
      */
     public static final String EVENTO_NAO_INFORMADO = "evento_nao_informado";
