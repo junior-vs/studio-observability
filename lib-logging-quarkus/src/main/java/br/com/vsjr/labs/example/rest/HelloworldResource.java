@@ -1,7 +1,7 @@
 package br.com.vsjr.labs.example.rest;
 
 import br.com.vsjr.labs.observability.annotations.Logged;
-import br.com.vsjr.labs.observability.annotations.Rastreado;
+import br.com.vsjr.labs.observability.annotations.Traced;
 import br.com.vsjr.labs.observability.dsl.enums.EntrypointEnum;
 import br.com.vsjr.labs.observability.dsl.enums.EventEnum;
 import br.com.vsjr.labs.observability.dsl.Log;
@@ -9,7 +9,7 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.Response;
 
 /**
- * Recurso REST de exemplo que demonstra o uso de {@link Logged} e {@link Rastreado}
+ * Recurso REST de exemplo que demonstra o uso de {@link Logged} e {@link Traced}
  * em nível de método — em contraste com {@link HelloService}, que os aplica na classe.
  *
  * <p>O uso por método permite controle granular: apenas as operações anotadas
@@ -18,7 +18,7 @@ import jakarta.ws.rs.core.Response;
  *
  * <p>Funcionalidades demonstradas:</p>
  * <ul>
- *   <li>{@code @Logged} e {@code @Rastreado} em nível de método</li>
+ *   <li>{@code @Logged} e {@code @Traced} em nível de método</li>
  *   <li>{@code info()} no fluxo principal ({@link #hello()})</li>
  *   <li>{@code debug()} com {@code comDetalhe()} e sanitização automática ({@link #buscarPedido})</li>
  *   <li>{@code erro()} na camada de recurso ({@link #divide})</li>
@@ -34,10 +34,10 @@ public class HelloworldResource {
     }
 
     /**
-     * Demonstra {@code @Logged} e {@code @Rastreado} em nível de método e o terminador {@code info()}.
+     * Demonstra {@code @Logged} e {@code @Traced} em nível de método e o terminador {@code info()}.
      */
     @Logged
-    @Rastreado
+    @Traced
     @Path("/world")
     @GET
     public String hello() {
@@ -64,7 +64,7 @@ public class HelloworldResource {
      * @param cpf      CPF do solicitante — protegido no observability
      */
     @Logged
-    @Rastreado
+    @Traced
     @Path("/pedido")
     @GET
     public Response buscarPedido(
@@ -86,7 +86,7 @@ public class HelloworldResource {
     }
 
     /**
-     * Método sem {@code @Logged} nem {@code @Rastreado} — demonstra que o controle
+     * Método sem {@code @Logged} nem {@code @Traced} — demonstra que o controle
      * é por método. O observability é emitido diretamente via DSL, sem interceptação CDI.
      *
      * @param a dividendo

@@ -15,20 +15,20 @@ import java.lang.annotation.*;
  *
  * <p>Pode ser combinada com {@link Logged} para obter rastreamento distribuído
  * e enriquecimento de contexto de logging no mesmo método. Nesse caso,
- * {@code @Rastreado} executa primeiro ({@code Priority APPLICATION - 10}) e o {@code spanId} do filho já
+ * {@code @Traced} executa primeiro ({@code Priority APPLICATION - 10}) e o {@code spanId} do filho já
  * está no MDC quando o {@link br.com.vsjr.labs.observability.interceptor.LogInterceptor}
  * registrar a localização do método.</p>
  *
  * <pre>{@code
  * // Apenas rastreamento
  * @ApplicationScoped
- * @Rastreado
+ * @Traced
  * public class IntegracaoFiscalClient { ... }
  *
  * // Rastreamento + contexto de logging
  * @ApplicationScoped
  * @Logged
- * @Rastreado
+ * @Traced
  * public class PagamentoService { ... }
  * }</pre>
  */
@@ -36,5 +36,5 @@ import java.lang.annotation.*;
 @Target({ElementType.TYPE, ElementType.METHOD})
 @Retention(RetentionPolicy.RUNTIME)
 @Inherited
-public @interface Rastreado {
+public @interface Traced {
 }

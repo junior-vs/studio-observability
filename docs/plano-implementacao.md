@@ -190,12 +190,12 @@ Pipeline de logging estruturado consistente, com campos canonicos e sem vazament
 
 ### Checklist
 
-- [ ] `log_entrypoint` substitui `log_canal`.
-- [ ] Campos da DSL sao removidos do MDC apos a emissao.
-- [ ] Campos de contexto de requisicao permanecem ate o final da resposta.
-- [ ] `eventType` e canonizado corretamente.
-- [ ] Chaves sensiveis sao mascaradas.
-- [ ] Testes cobrem valores nulos, vazios e fallback.
+- [x] `log_entrypoint` substitui `log_canal`.
+- [x] Campos da DSL sao removidos do MDC apos a emissao.
+- [x] Campos de contexto de requisicao permanecem ate o final da resposta.
+- [x] `eventType` e canonizado corretamente.
+- [x] Chaves sensiveis sao mascaradas.
+- [x] Testes cobrem valores nulos, vazios e fallback.
 
 ### Criterios de Aceite
 
@@ -207,6 +207,8 @@ Pipeline de logging estruturado consistente, com campos canonicos e sem vazament
 - Ao final de uma requisicao HTTP, o MDC e limpo.
 
 ## Sprint 3 - Tracing: `@Traced`, Interceptor e Enriquecimento
+
+**Status:** Finalizada.
 
 ### Objetivo
 
@@ -243,22 +245,22 @@ API de tracing publica com `@Traced`, interoperando corretamente com `@Logged`, 
 
 ### Checklist
 
-- [ ] `@Traced` existe como anotacao publica.
-- [ ] `TracingInterceptor` usa `@Traced`.
-- [ ] Estrategia para `@Rastreado` definida e aplicada.
-- [ ] Ordem `TracingInterceptor` antes de `LogInterceptor` coberta por teste.
-- [ ] `spanId` pai e restaurado.
-- [ ] Excecoes marcam span como erro.
-- [ ] Enriquecedores de tracing executam por prioridade.
+- [x] `@Traced` existe como anotacao publica.
+- [x] `TracingInterceptor` usa `@Traced`.
+- [x] Estrategia para `@Rastreado` definida e aplicada: rename limpo, sem alias deprecated.
+- [x] Ordem `TracingInterceptor` antes de `LogInterceptor` coberta por teste.
+- [x] `spanId` pai e restaurado.
+- [x] Excecoes marcam span como erro.
+- [x] Enriquecedores de tracing executam por prioridade.
 
 ### Criterios de Aceite
 
-- Metodo anotado com `@Traced` cria child span.
-- Logs emitidos dentro do metodo usam `spanId` do child span.
-- Ao sair do metodo, o `spanId` anterior e restaurado.
-- Excecao no metodo marca o span como `ERROR` e e relancada.
-- Falha ao encerrar span nao substitui a excecao de negocio.
-- `@Traced` e `@Logged` no mesmo metodo mantem ordem correta de interceptacao.
+- [x] Metodo anotado com `@Traced` cria child span.
+- [x] Logs emitidos dentro do metodo usam `spanId` do child span.
+- [x] Ao sair do metodo, o `spanId` anterior e restaurado.
+- [x] Excecao no metodo marca o span como `ERROR` e e relancada.
+- [x] Falha ao encerrar span nao substitui a excecao de negocio.
+- [x] `@Traced` e `@Logged` no mesmo metodo mantem ordem correta de interceptacao.
 
 ## Sprint 4 - Metricas e Observabilidade do Metodo
 

@@ -4,7 +4,7 @@ import br.com.vsjr.labs.observability.dsl.enums.EventError;
 import org.jboss.logging.MDC;
 
 import br.com.vsjr.labs.observability.CamposMdc;
-import br.com.vsjr.labs.observability.annotations.Rastreado;
+import br.com.vsjr.labs.observability.annotations.Traced;
 import br.com.vsjr.labs.observability.dsl.Log;
 import br.com.vsjr.labs.observability.dsl.enums.EntrypointEnum;
 import br.com.vsjr.labs.observability.security.LocalizacaoMetodo;
@@ -15,7 +15,7 @@ import jakarta.interceptor.Interceptor;
 import jakarta.interceptor.InvocationContext;
 
 /**
- * CDI Interceptor ativado por {@link Rastreado}.
+ * CDI Interceptor ativado por {@link Traced}.
  *
  * <p>Para cada método interceptado:</p>
  * <ol>
@@ -34,7 +34,7 @@ import jakarta.interceptor.InvocationContext;
  * <p><b>Sobre o beans.xml:</b> não necessário — o ArC descobre e ativa este interceptor
  * automaticamente via índice Jandex durante o build do Quarkus.</p>
  */
-@Rastreado
+@Traced
 @Interceptor
 @Priority(Interceptor.Priority.APPLICATION - 10)
 public class TracingInterceptor {
@@ -48,7 +48,7 @@ public class TracingInterceptor {
 
 
     /**
-     * Intercepta o método anotado com {@link Rastreado} e gerencia o ciclo de vida do span.
+     * Intercepta o método anotado com {@link Traced} e gerencia o ciclo de vida do span.
      *
      * @param contexto contexto CDI da invocação
      * @return resultado do método interceptado

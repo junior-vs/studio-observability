@@ -12,7 +12,7 @@ The library enforces a structured **5W1H** logging contract at compile time usin
 ## Features
 
 - **Compile-time-safe DSL** — `Log.registrando(Event).em()|aqui().[porque().[como(Entrypoint).[comDetalhe()]*]].info()|debug()|warn()|erro()` guided by sealed interfaces
-- **CDI interceptors** — `@Logged` for MDC enrichment and optional Micrometer metrics; `@Rastreado` for OTel child span creation
+- **CDI interceptors** — `@Logged` for MDC enrichment and optional Micrometer metrics; `@Traced` for OTel child span creation
 - **Automatic PII and credential masking** — `token`, `senha`, `cpf`, `email`, and similar keys are redacted before logging, with no extra configuration
 - **Extensible enrichment pipelines** — add `EnriquecedorContexto` and `EnriquecedorTracing` beans to enrich MDC and span attributes without modifying library code
 - **HTTP request lifecycle** — `LogContextoFiltro` initialises correlation fields (`traceId`, `spanId`, `userId`, `applicationName`) on every inbound request and cleans the MDC on response
@@ -41,7 +41,7 @@ The demo application starts at `http://localhost:8080`. The [Dev UI](http://loca
 Try the example endpoints:
 
 ```bash
-# Basic hello — demonstrates @Logged + @Rastreado at method level
+# Basic hello — demonstrates @Logged + @Traced at method level
 curl http://localhost:8080/hello/world
 
 # Order lookup — demonstrates comDetalhe() with automatic PII masking
@@ -112,20 +112,20 @@ public class ReportService {
 }
 ```
 
-#### `@Rastreado`
+#### `@Traced`
 
 Activates `TracingInterceptor` to create a child OTel span per invocation. Runs at `APPLICATION - 10` priority, so the new `spanId` is already in the MDC when `@Logged` enriches the context.
 
 ```java
 // Tracing only
 @ApplicationScoped
-@Rastreado
+@Traced
 public class FiscalIntegrationClient { ... }
 
 // Tracing + logging context
 @ApplicationScoped
 @Logged
-@Rastreado
+@Traced
 public class PaymentService { ... }
 ```
 

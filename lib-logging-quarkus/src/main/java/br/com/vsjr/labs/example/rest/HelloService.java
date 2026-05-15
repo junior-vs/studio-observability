@@ -1,7 +1,7 @@
 package br.com.vsjr.labs.example.rest;
 
 import br.com.vsjr.labs.observability.annotations.Logged;
-import br.com.vsjr.labs.observability.annotations.Rastreado;
+import br.com.vsjr.labs.observability.annotations.Traced;
 import br.com.vsjr.labs.observability.dsl.enums.EntrypointEnum;
 import br.com.vsjr.labs.observability.dsl.enums.EventEnum;
 import br.com.vsjr.labs.observability.dsl.Log;
@@ -14,7 +14,7 @@ import jakarta.enterprise.context.ApplicationScoped;
  * métodos: injeta {@code userId}, {@code traceId}, {@code spanId}, {@code classe} e
  * {@code metodo} no MDC.</p>
  *
- * <p>A anotação {@link Rastreado} cria um Child Span OTel para cada invocação,
+ * <p>A anotação {@link Traced} cria um Child Span OTel para cada invocação,
  * garantindo correlação com Jaeger/Grafana Tempo.</p>
  *
  * <p>Funcionalidades demonstradas:</p>
@@ -27,7 +27,7 @@ import jakarta.enterprise.context.ApplicationScoped;
  * </ul>
  */
 @Logged
-@Rastreado
+@Traced
 @ApplicationScoped
 public class HelloService {
 
