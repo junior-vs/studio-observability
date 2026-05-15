@@ -1280,14 +1280,139 @@ LogContextoFiltro.filter(response)    ← MDC: limpo completamente (MDC.clear())
 **Regra de verificação:** qualquer `MDC.put()` no código da aplicação ou da biblioteca que não tenha um `MDC.remove()` ou `MDC.clear()` correspondente em um bloco `finally` é context leak em potencial. Code review deve barrar sistematicamente esse padrão (anti-padrão P7).
 
 ---
-
 ### 10. A DSL `LogSistematico` — Enforcement do 5W1H
 
 #### 10.1. Contrato da Cadeia Fluente
 
+A DSL `LogSistematico` não é apenas uma API conveniente — é um **mecanismo de enforcement em tempo de compilação**. O compilador Java impede que um log seja emitido sem as dimensões obrigatórias *What* (`.registrando()`) e *Where* técnico (`.em()`). Logs incompletos são erros de compilação, não bugs silenciosos em produção.
+
+Isso é viabilizado pelo uso de `sealed interface` (Java 21) no tipo `LogEtapas`, com `permits` restrito exclusivamente a `LogSistematico`. A cadeia de métodos retorna tipos progressivamente mais restritos — cada etapa só expõe os métodos válidos naquele ponto do contrato:
+
+```
+LogSistematico
+    .registrando(evento)           // What  — obrigatório: abre a cadeia
+    .em(classe, metodo)            // Where — obrigatório: localização técnica
+  [ .porque(motivo)         ]      // Why   — opcional: causa de negócio
+  [ .como(canal)            ]      // How   — opcional: canal de entrada
+  [ .comDetalhe(chave, val) ]*     // extra — zero ou mais campos de domínio
+    .info() | .debug() | .warn() | .erro(ex) | .erroERelanca(ex)
+             └──── terminadores — emitem o evento e encerram a cadeia
+```
+
+As dimensões *Who* (`userId`, `applicationName`) e *When* (`timestamp`) são injetadas automaticamente via MDC pelo `GerenciadorContextoLog` — o desenvolvedor não as declara.
+
+Exemplo completo com todas as dimensões:
+
+```java
+LogSistematico
+    .registrando("Pagamento recusado")                       // What
+    .em(PagamentoService.class, "processar")                 // Where técnico
+    .porque("Gateway recusou — saldo insuficiente")          // Why
+    .como("API REST — POST /pagamentos")                     // How
+    .comDetalhe("pedidoId",    pedidoId)
+    .comDetalhe("errorCode",   "PAG-4022")
+    .comDetalhe("gatewayCode", e.getCodigo())
+    .erro(e);
+```
+
+JSON resultante:
+
+```json
+{
+  "timestamp":           "2026-03-11T21:55:00.123Z",
+  "level":               "ERROR",
+  "message":             "Pagamento recusado",
+  "traceId":             "4bf92f3577b34da6a3ce929d0e0e4736",
+  "spanId":              "a3ce929d0e0e4736",
+  "userId":              "joao.silva@empresa.com",
+  "applicationName":     "pagamentos-service",
+  "classe":              "PagamentoService",
+  "metodo":              "processar",
+  "log_classe":          "PagamentoService",
+  "log_metodo":          "processar",
+  "log_motivo":          "Gateway recusou — saldo insuficiente",
+  "log_canal":           "API REST — POST /pagamentos",
+  "detalhe_pedidoId":    "9912",
+  "detalhe_errorCode":   "PAG-4022",
+  "detalhe_gatewayCode": "INSUFFICIENT_FUNDS",
+  "stack_trace":         "br.com.dominio.GatewayException: INSUFFICIENT_FUNDS\n\tat ..."
+}
+```
+
+---
+
 #### 10.2. Dimensões Obrigatórias vs. Opcionais
 
-#### 10.3. Terminadores de Nível: `.info()`, `.warn()`, `.erro(e)`, `.erroERelanca(e)`
+| Dimensão | Método DSL | Obrigatoriedade | Campo JSON resultante |
+|---|---|---|---|
+| *What* | `.registrando(texto)` | **Obrigatório** — erro de compilação se ausente | `message` |
+| *Where* técnico | `.em(Classe.class, "metodo")` | **Obrigatório** — erro de compilação se ausente | `log_classe`, `log_metodo` |
+| *Why* | `.porque(texto)` | Opcional pela DSL; obrigatório por convenção em `ERROR` e `WARN` | `log_motivo` |
+| *How* | `.como(texto)` | Opcional | `log_canal` |
+| Detalhes | `.comDetalhe(chave, valor)` | Opcional; repetível (zero ou mais) | `detalhe_{chave}` |
+| *Who* | — | Automático via MDC | `userId`, `applicationName` |
+| *When* | — | Automático via formatador | `timestamp` |
+| Correlação | — | Automático via MDC + OTel | `traceId`, `spanId` |
+
+**Convenção para eventos de negócio:** eventos de negócio devem incluir `.comDetalhe("eventType", "ORDER_COMPLETED")`. O campo `detalhe_eventType` é o que torna o evento identificável como categoria distinta em queries de analytics — sem depender de parsear o campo `message`.
+
+**Governança de alta cardinalidade:** campos como `pedidoId`, `userId`, `valorTotal` devem ser declarados via `.comDetalhe()` — nunca interpolados na mensagem. Isso preserva o fingerprinting estável do `message` e mantém os dados variáveis em campos indexáveis e consultáveis de forma independente.
+
+---
+
+#### 10.3. Terminadores de Nível
+
+Os terminadores encerram a cadeia fluente, determinam o nível de severidade do evento e acionam a emissão do JSON. São o único ponto onde o evento é materializado — nenhuma I/O ocorre antes.
+
+| Terminador | Nível | Comportamento |
+|---|---|---|
+| `.info()` | `INFO` | Emite o evento. Operações que alteram estado: persistência, autenticação, chamadas externas. |
+| `.debug()` | `DEBUG` | Emite o evento. Fluxos internos e decisões condicionais. Não habilitado em produção por padrão. |
+| `.warn()` | `WARN` | Emite o evento. Situações anômalas recuperáveis: fallbacks ativados, validações rejeitadas. |
+| `.erro(e)` | `ERROR` | Emite o evento com stack trace completo. Exceção serializada como `stack_trace`. Loga e retorna — não relança. |
+| `.erroERelanca(e)` | `ERROR` | Emite o evento com stack trace completo e **relança a exceção original**. Uso: fronteiras onde a exceção deve ser propagada para o chamador após registro. |
+
+**`.erro(e)` vs. `.erroERelanca(e)` — quando usar cada um:**
+
+```java
+// .erro(e) — a exceção é tratada aqui; o fluxo continua
+catch (GatewayException e) {
+    LogSistematico
+        .registrando("Falha ao processar pagamento")
+        .em(PagamentoService.class, "processar")
+        .porque("Gateway retornou erro definitivo")
+        .comDetalhe("errorCode", "PAG-4022")
+        .erro(e);
+    return ResultadoPagamento.falhou(e.getCodigo());
+}
+
+// .erroERelanca(e) — a exceção deve ser propagada; o log adiciona contexto antes de subir
+catch (DatabaseException e) {
+    LogSistematico
+        .registrando("Falha crítica na persistência")
+        .em(PedidoRepository.class, "salvar")
+        .porque("Conexão com banco indisponível")
+        .comDetalhe("pedidoId", pedido.getId())
+        .erroERelanca(e);
+    // A exceção sobe para o chamador — nunca alcança esta linha
+}
+```
+
+**Guarda de nível para computações custosas:** se a construção do contexto envolve serialização ou operação com custo de CPU, proteger com guarda de nível antes de montar a cadeia:
+
+```java
+// Sem guarda — serializa o objeto mesmo se DEBUG estiver desabilitado
+LogSistematico.registrando("Estado do pedido: " + objectMapper.writeValueAsString(pedido))...
+
+// Correto — custo pago apenas se o nível estiver habilitado
+if (log.isDebugEnabled()) {
+    LogSistematico
+        .registrando("Estado intermediário do pedido")
+        .em(PedidoService.class, "processar")
+        .comDetalhe("pedido", objectMapper.writeValueAsString(pedido))
+        .debug();
+}
+```
 
 ---
 
@@ -1295,19 +1420,234 @@ LogContextoFiltro.filter(response)    ← MDC: limpo completamente (MDC.clear())
 
 #### 11.1. Injeção Automática de Localização Técnica no MDC
 
-#### 11.2. Métricas Automáticas: `metodo.execucao` e `metodo.falha`
+A anotação `@Logged` é um `@InterceptorBinding` CDI que, quando aplicada a um bean ou método, ativa o `LogInterceptor` — um interceptor `@AroundInvoke` que injeta automaticamente os campos `classe` e `metodo` no MDC antes da execução do método e os remove no `finally`.
 
-#### 11.3. Ativação e Prioridade CDI
+```java
+@Logged
+@ApplicationScoped
+public class PedidoService {
+
+    public Pedido criar(NovoPedidoRequest request) {
+        // MDC contém: { classe: "PedidoService", metodo: "criar" }
+        // Todos os logs emitidos dentro deste método incluem esses campos automaticamente
+
+        LogSistematico
+            .registrando("Pedido criado")
+            .em(PedidoService.class, "criar")
+            .comDetalhe("pedidoId", pedido.getId())
+            .info();
+
+        return pedido;
+    }
+}
+```
+
+Comportamento do interceptor:
+
+```java
+@Interceptor
+@Logged
+@Priority(2000)
+public class LogInterceptor {
+
+    @Inject
+    GerenciadorContextoLog gerenciador;
+
+    @Inject
+    MeterRegistry registry;
+
+    @AroundInvoke
+    public Object interceptar(InvocationContext contexto) throws Exception {
+        var metodo = contexto.getMethod();
+        var classe = metodo.getDeclaringClass().getSimpleName();
+        var nomeMetodo = metodo.getName();
+
+        gerenciador.registrarLocalizacao(classe, nomeMetodo);
+        var inicio = System.nanoTime();
+
+        try {
+            return contexto.proceed();
+        } catch (Exception e) {
+            // Incrementa counter de falhas com tipo de exceção como tag
+            registry.counter("metodo.falha",
+                "classe",   classe,
+                "metodo",   nomeMetodo,
+                "excecao",  e.getClass().getSimpleName()
+            ).increment();
+            throw e;
+        } finally {
+            // Registra duração no Timer — executado sempre, inclusive em caso de exceção
+            registry.timer("metodo.execucao",
+                "classe", classe,
+                "metodo", nomeMetodo
+            ).record(System.nanoTime() - inicio, TimeUnit.NANOSECONDS);
+
+            // Limpeza garantida — previne context leak entre métodos consecutivos
+            gerenciador.removerLocalizacao();
+        }
+    }
+}
+```
+
+**`@Logged` em classe vs. em método:** aplicar `@Logged` na classe intercepta todos os métodos públicos do bean. Para interceptar apenas métodos específicos — por exemplo, excluir métodos de ciclo de vida do CDI — aplicar `@Logged` diretamente no método.
 
 ---
 
+#### 11.2. Métricas Automáticas: `metodo.execucao` e `metodo.falha`
+
+O `LogInterceptor` registra automaticamente duas métricas para cada método `@Logged`, sem nenhuma instrumentação adicional:
+
+**`metodo.execucao` — Timer com histograma**
+
+Registra a duração de cada invocação bem-sucedida e com erro. Tags: `classe` e `metodo`. Com `publishPercentileHistogram()` habilitado no `MeterRegistry`, expõe percentis p50, p95 e p99 diretamente via Prometheus.
+
+```promql
+# p99 de latência do PedidoService.criar nos últimos 5 minutos
+histogram_quantile(0.99,
+  rate(metodo_execucao_seconds_bucket{
+    classe="PedidoService", metodo="criar"
+  }[5m])
+)
+```
+
+**`metodo.falha` — Counter por tipo de exceção**
+
+Incrementado a cada exceção lançada pelo método. A tag `excecao` carrega o `getSimpleName()` da exceção — tornando possível detectar picos de um tipo específico de exceção sem abrir os logs:
+
+```promql
+# Taxa de GatewayException por segundo nos últimos 2 minutos
+rate(metodo_falha_total{
+  classe="PagamentoService",
+  metodo="processar",
+  excecao="GatewayException"
+}[2m])
+```
+
+Correlação típica durante um incidente: o counter `metodo.falha` dispara o alerta; o `traceId` em um log de `ERROR` correlacionado leva ao trace no Jaeger; o trace aponta o Child Span com latência anômala.
+
+---
+
+#### 11.3. Ativação e Prioridade CDI
+
+No Quarkus com ArC, interceptors anotados com `@Interceptor` são descobertos automaticamente — não requer declaração em `beans.xml`. A `@Priority` determina a ordem de execução quando múltiplos interceptors se sobrepõem no mesmo método.
+
+**Prioridade e ordem de execução com `@Rastreado`:**
+
+A anotação `@Rastreado` (seção 15) cria um Child Span OTel por método instrumentado. Para que o `spanId` do Child Span apareça corretamente nos logs emitidos dentro do método, o `RastreamentoInterceptor` deve executar **antes** do `LogInterceptor` — ou seja, deve ter prioridade numericamente menor:
+
+```java
+@Interceptor @Rastreado @Priority(1000)  // executa primeiro — cria o Child Span
+public class RastreamentoInterceptor { ... }
+
+@Interceptor @Logged    @Priority(2000)  // executa depois — lê o spanId já atualizado
+public class LogInterceptor { ... }
+```
+
+Ordem resultante de execução (pilha de interceptors):
+
+```
+Requisição HTTP chega
+    └─ RastreamentoInterceptor.antes()   // cria Child Span, atualiza MDC com spanId filho
+         └─ LogInterceptor.antes()       // registra classe/metodo no MDC, inicia Timer
+              └─ método de negócio()     // todos os logs aqui têm spanId do Child Span
+         └─ LogInterceptor.finally()     // para Timer, remove classe/metodo do MDC
+    └─ RastreamentoInterceptor.finally() // encerra Child Span, restaura spanId do pai
+```
+
+Se a ordem for invertida — `LogInterceptor` com prioridade menor que `RastreamentoInterceptor` — o Timer começa antes do Child Span ser criado, e o `spanId` nos logs pode refletir o span pai em vez do Child Span do método. A convenção de prioridade `1000/2000` deve ser mantida sem alteração.
+
+---
 ### 12. `SanitizadorDados` — Proteção de Dados Sensíveis
 
 #### 12.1. Categorias de Mascaramento Automático
 
+O `SanitizadorDados` é invocado automaticamente pela DSL antes de qualquer campo declarado via `.comDetalhe(chave, valor)` ser serializado no JSON. A interceptação ocorre pelo nome da chave — o desenvolvedor não precisa indicar que um campo é sensível; o sanitizador aplica a categoria correspondente por inferência do nome.
+
+Dois graus de proteção são aplicados:
+
+| Categoria | Chaves interceptadas | Valor no JSON | Justificativa |
+|---|---|---|---|
+| **Credenciais** | `password`, `senha`, `token`, `accesstoken`, `refreshtoken`, `authorization`, `apikey`, `cvv`, `secret` | `"****"` | Credenciais não devem ser inspecionáveis nem mesmo por operadores com acesso ao agregador |
+| **Dados pessoais** | `cpf`, `rg`, `email`, `celular`, `cardnumber`, `numerocartao` | `"[PROTEGIDO]"` | Conformidade LGPD — dado pessoal identificável não deve trafegar em claro nos logs |
+| **Demais** | qualquer outra chave | valor original | Sem restrição |
+
+O mascaramento é aplicado independente de maiúsculas/minúsculas na chave — `Email`, `EMAIL` e `email` produzem o mesmo resultado.
+
+Implementação com `switch` de pattern matching (Java 21):
+
+```java
+@ApplicationScoped
+public class SanitizadorDados {
+
+    public Object sanitizar(String chave, Object valor) {
+        return switch (categorizarChave(chave.toLowerCase())) {
+            case CREDENCIAL    -> "****";
+            case DADO_PESSOAL  -> "[PROTEGIDO]";
+            case INOFENSIVO    -> valor;
+        };
+    }
+
+    private Categoria categorizarChave(String chaveNormalizada) {
+        return switch (chaveNormalizada) {
+            case "password", "senha", "token", "accesstoken",
+                 "refreshtoken", "authorization", "apikey",
+                 "cvv", "secret"
+                    -> Categoria.CREDENCIAL;
+            case "cpf", "rg", "email", "celular",
+                 "cardnumber", "numerocartao"
+                    -> Categoria.DADO_PESSOAL;
+            default -> Categoria.INOFENSIVO;
+        };
+    }
+
+    private enum Categoria { CREDENCIAL, DADO_PESSOAL, INOFENSIVO }
+}
+```
+
+O uso de `switch` com pattern matching em vez de cadeias de `if-else` garante exaustividade verificada pelo compilador — adicionar uma nova categoria sem tratar os casos é erro de compilação.
+
+---
+
 #### 12.2. Redação Total: Responsabilidade do Chamador
 
+O `SanitizadorDados` substitui o valor de um campo por um marcador — mas o **campo ainda aparece no JSON**. Para campos que exigem **redação completa** (omissão total do campo no JSON), a exclusão deve ocorrer antes da chamada a `.comDetalhe()`.
+
+```java
+// Mascaramento automático — campo aparece no JSON com valor substituído
+.comDetalhe("token", tokenJWT)
+// Resultado: "detalhe_token": "****"
+
+// Redação total — campo omitido completamente do JSON
+// O chamador decide não incluir o campo
+if (deveRegistrarToken) {
+    logBuilder.comDetalhe("tokenHash", DigestUtils.sha256Hex(tokenJWT));
+}
+// Resultado: campo ausente do JSON
+```
+
+Casos que exigem redação total em vez de mascaramento:
+
+- Campos cujo nome ou a presença do campo em si é informação sensível (ex: campo `biometria` — mesmo `"****"` revela que dados biométricos foram processados).
+- Campos que combinados com outros campos permitem re-identificação (ex: `dataNascimento` + `cep` + `genero`).
+- Campos de resposta de APIs financeiras que podem conter dados regulados além das chaves interceptadas.
+
+**O sanitizador é a última linha de defesa — não a única.** A revisão arquitetural de quais campos devem ou não aparecer nos logs é responsabilidade do time de desenvolvimento e do DPO. O `SanitizadorDados` previne vazamentos por descuido; não substitui o design deliberado de privacidade.
+
+---
+
 #### 12.3. Conformidade LGPD
+
+A LGPD (Lei 13.709/2018) exige que dados pessoais identificáveis sejam tratados com finalidade específica e com acesso restrito. Logs de produção acessados por operadores, engenheiros de SRE e ferramentas de analytics constituem processamento de dados pessoais — e devem obedecer aos mesmos princípios de minimização de dados que qualquer outro processamento.
+
+Implicações diretas para a biblioteca:
+
+**Minimização:** registrar apenas os campos necessários para o diagnóstico. `userId` (identificador) é necessário; CPF completo, não. O `SanitizadorDados` faz essa separação automaticamente para as categorias conhecidas.
+
+**Rastreabilidade de acesso:** o campo `userId` em cada evento é o que permite responder, diante de uma auditoria regulatória, *quais dados de qual usuário foram processados, quando e por qual sistema*. A presença consistente do `userId` nos logs não é apenas uma boa prática de observabilidade — é um requisito regulatório para trilha de auditoria.
+
+**Retenção:** a política de retenção de logs (ex: 90 dias no Elasticsearch, 1 ano no cold storage) deve ser documentada e cumprir os prazos da LGPD. Logs com dados pessoais — mesmo mascarados — devem respeitar o período de retenção acordado com o titular dos dados.
+
+**Direito ao esquecimento:** se um titular solicitar a exclusão de seus dados, logs que contenham `userId` identificável precisam ser tratados. A arquitetura de coleta (Elasticsearch com retenção por índice diário ou semanal) deve suportar a exclusão de registros por `userId` — ou a política de mascaramento deve garantir que os logs não sejam reidentificáveis após o prazo de retenção.
 
 ---
 
@@ -1315,11 +1655,136 @@ LogContextoFiltro.filter(response)    ← MDC: limpo completamente (MDC.clear())
 
 #### 13.1. Distinção entre Eventos Técnicos e de Negócio
 
+Os logs de uma aplicação servem a dois públicos distintos com necessidades diferentes:
+
+| Tipo de Evento | Público | Características | Exemplo |
+|---|---|---|---|
+| **Técnico** | Engenheiros, SRE | Falhas de integração, exceções, estados de fluxo interno, latência | `"Timeout ao conectar no banco"` |
+| **De Negócio** | Produto, Analytics, Compliance | Transições de estado do domínio, KPIs, trilha de auditoria | `"Pedido concluído"` com `ORDER_COMPLETED` |
+
+A diferença não é apenas semântica — é de rastreabilidade. Ferramentas de analytics e dashboards de produto precisam filtrar eventos de negócio sem varrer eventos técnicos, e vice-versa. O campo `detalhe_eventType` é o discriminador que torna isso possível sem parsear o `message`.
+
+Eventos de negócio devem ser tratados como cidadãos de primeira classe na arquitetura de observabilidade — não como logs incidentais do fluxo de negócio. Majors et al. (Observability Engineering, cap. 3) descrevem exatamente esse padrão: eventos de negócio ricos em contexto são o que diferencia observabilidade de monitoramento.
+
+---
+
 #### 13.2. `eventType` como Identificador Canônico
+
+O campo `detalhe_eventType` é o identificador técnico do tipo de evento de negócio. Deve ser uma string em `SCREAMING_SNAKE_CASE`, estável entre versões, tratável como enum de domínio:
+
+```java
+LogSistematico
+    .registrando("Pedido concluído")
+    .em(PedidoService.class, "concluir")
+    .porque("Pagamento confirmado pelo gateway")
+    .como("API REST — POST /pedidos/{id}/concluir")
+    .comDetalhe("eventType",  "ORDER_COMPLETED")
+    .comDetalhe("pedidoId",   pedido.getId())
+    .comDetalhe("valorTotal", pedido.getValorTotal())
+    .comDetalhe("currency",   "BRL")
+    .comDetalhe("userId",     pedido.getUserId())
+    .info();
+```
+
+JSON resultante:
+
+```json
+{
+  "timestamp":           "2026-03-11T21:55:00.123Z",
+  "level":               "INFO",
+  "message":             "Pedido concluído",
+  "traceId":             "4bf92f3577b34da6a3ce929d0e0e4736",
+  "userId":              "joao.silva@empresa.com",
+  "applicationName":     "pedidos-service",
+  "detalhe_eventType":   "ORDER_COMPLETED",
+  "detalhe_pedidoId":    "9912",
+  "detalhe_valorTotal":  349.90,
+  "detalhe_currency":    "BRL"
+}
+```
+
+Query no Kibana para dashboard de analytics em tempo real:
+
+```
+detalhe_eventType: "ORDER_COMPLETED" AND @timestamp:[now-1h TO now]
+```
+
+Query para taxa de conversão do dia:
+
+```
+detalhe_eventType: "ORDER_COMPLETED" / detalhe_eventType: "CHECKOUT_STARTED"
+```
+
+**Catálogo de `eventType`:** cada domínio deve manter um catálogo documentado dos `eventType` definidos — análogo a um enum de domínio. Isso previne variações como `ORDER_COMPLETE` vs `ORDER_COMPLETED` vs `PEDIDO_CONCLUIDO` que fragmentam as queries de analytics.
+
+---
 
 #### 13.3. Códigos de Erro e Base de Conhecimento (KEDB)
 
+Eventos críticos de negócio e infraestrutura devem receber **códigos de erro únicos e estáveis** (ex: `PAG-4022`, `VND-3001`, `NF-5010`). Esses códigos são a chave de ligação entre o evento em produção e a **KEDB** (*Known Error Database*) — repositório interno que documenta causa raiz, impacto e procedimento de remediação para cada código.
+
+O contrato do código de erro:
+
+| Atributo | Requisito |
+|---|---|
+| **Unicidade** | Um código identifica um único tipo de falha — nunca reutilizar |
+| **Estabilidade** | O código não muda entre versões — é referenciado em runbooks, alertas e dashboards |
+| **Prefixo de domínio** | Formato `{DOMÍNIO}-{NÚMERO}` — `PAG` para pagamentos, `VND` para vendas, `NF` para nota fiscal |
+| **Sem semântica no número** | O número é opaco — não codifica severidade, categoria ou versão |
+
+```java
+LogSistematico
+    .registrando("Falha ao processar pagamento")
+    .em(PagamentoService.class, "processar")
+    .porque("Gateway recusou a transação")
+    .comDetalhe("errorCode",         "PAG-4022")
+    .comDetalhe("pedidoId",          pedidoId)
+    .comDetalhe("codigoErroGateway", e.getCodigo())
+    .erro(e);
+```
+
+Quando um operador recebe um alerta com `detalhe_errorCode: "PAG-4022"` às 3 da manhã, consulta a KEDB e executa o procedimento documentado — sem precisar interpretar o `message`, sem precisar abrir o código-fonte, sem depender do desenvolvedor que escreveu o código. O código é estável; a mensagem pode variar entre versões.
+
+**Integração com alertas:** o `errorCode` deve ser uma tag em alertas do Alertmanager/Grafana. Isso permite que um único alerta genérico ("taxa de erro acima do limiar") inclua o `errorCode` como label, direcionando automaticamente o operador para o runbook correto sem análise manual dos logs.
+
+---
+
 #### 13.4. Campos de Auditoria: `actorId`, `entityType`, `stateBefore`, `stateAfter`
+
+Eventos de auditoria documentam **quem fez o quê sobre qual entidade**, com o estado da entidade antes e depois da operação. São a evidência técnica para conformidade regulatória (LGPD, SOC 2), investigações de segurança e resolução de disputas.
+
+**Estado atual (v0.2):** o `AuditRecord` e a anotação `@Auditable` estão planejados para v0.3. Até então, eventos de auditoria são registrados via `LogSistematico` com os campos obrigatórios declarados explicitamente via `.comDetalhe()`.
+
+**Campos obrigatórios de auditoria:**
+
+| Campo | Tipo | Descrição | Declaração |
+|---|---|---|---|
+| `actorId` | `string` | Identificador de quem executou a ação — pode diferir do `userId` da requisição (ex: operador agindo em nome de cliente) | `.comDetalhe("actorId", ...)` |
+| `entityType` | `string` | Tipo da entidade afetada — `"Pedido"`, `"Contrato"`, `"Usuario"` | `.comDetalhe("entityType", ...)` |
+| `entityId` | `string` | Identificador da instância da entidade afetada | `.comDetalhe("entityId", ...)` |
+| `stateBefore` | `string` | Estado da entidade antes da operação — serializado como JSON string | `.comDetalhe("stateBefore", ...)` |
+| `stateAfter` | `string` | Estado da entidade após a operação | `.comDetalhe("stateAfter", ...)` |
+| `outcome` | `string` | Resultado da operação: `"SUCCESS"`, `"FAILURE"`, `"PARTIAL"` | `.comDetalhe("outcome", ...)` |
+
+```java
+LogSistematico
+    .registrando("Contrato cancelado por operador")
+    .em(ContratoService.class, "cancelar")
+    .porque("Solicitação do cliente via canal de atendimento")
+    .como("API REST — DELETE /contratos/{id}")
+    .comDetalhe("eventType",    "CONTRACT_CANCELLED")
+    .comDetalhe("actorId",      operadorId)
+    .comDetalhe("entityType",   "Contrato")
+    .comDetalhe("entityId",     contratoId)
+    .comDetalhe("stateBefore",  contratoAntes.toJsonString())
+    .comDetalhe("stateAfter",   contratoDepois.toJsonString())
+    .comDetalhe("outcome",      "SUCCESS")
+    .info();
+```
+
+**Inconsistência de nomenclatura resolvida:** o `FIELD_NAMES.md` define `actorId`, `entityType` e `stateBefore` como campos canônicos sem prefixo. Na v0.2, declarados via `.comDetalhe()`, esses campos aparecem no JSON como `detalhe_actorId`, `detalhe_entityType` e `detalhe_stateBefore`. O prefixo `detalhe_` será removido quando a abstração `@Auditable` for implementada na v0.3 — que emitirá esses campos diretamente como chaves de primeiro nível sem prefixo. Queries construídas agora devem usar `detalhe_actorId`; serão atualizadas na migração para v0.3.
+
+**`actorId` vs. `userId`:** o `userId` (campo de correlação automático) identifica o usuário autenticado na requisição HTTP. O `actorId` (campo de auditoria explícito) identifica quem é o responsável pela ação de negócio — que pode ser diferente em cenários de impersonação, operações de backoffice ou processamentos em lote onde um operador age em nome de outro usuário.
 
 ---
 
@@ -1329,7 +1794,73 @@ LogContextoFiltro.filter(response)    ← MDC: limpo completamente (MDC.clear())
 
 #### 14.1. Estrutura de Pacotes
 
+A camada de tracing é organizada em `tracing/` — separada do pacote `context/` de logging para preservar a separação de responsabilidades. Cada pacote tem um contrato único e um ciclo de evolução independente.
+
+```
+lib-logging-quarkus/
+└── src/main/java/br/com/seudominio/log/
+    ├── annotations/
+    │   ├── Logged.java                    ← @InterceptorBinding CDI — logging
+    │   └── Rastreado.java                 ← @InterceptorBinding CDI — tracing
+    ├── context/
+    │   ├── LogContexto.java
+    │   ├── GerenciadorContextoLog.java
+    │   └── SanitizadorDados.java
+    ├── core/
+    │   └── LogEvento.java
+    ├── dsl/
+    │   ├── LogEtapas.java
+    │   └── LogSistematico.java
+    ├── filtro/
+    │   └── LogContextoFiltro.java
+    ├── interceptor/
+    │   ├── LogInterceptor.java
+    │   └── RastreamentoInterceptor.java   ← CDI @AroundInvoke + OTel Tracer
+    └── tracing/
+        ├── EnriquecedorSpan.java          ← interface do pipeline de enriquecimento
+        ├── EnriquecedorMetadados.java     ← atributos técnicos OTel (prioridade 10)
+        ├── EnriquecedorIdentidade.java    ← enduser.id via SecurityIdentity (prioridade 20)
+        └── GerenciadorRastreamento.java   ← ciclo de vida do Span + sincronização MDC
+```
+
+A implementação satisfaz os cinco requisitos do padrão Distributed Tracing (Richardson — microservices.io):
+
+| Requisito | Mecanismo | Componente |
+|---|---|---|
+| Geração automática de `traceId` e `spanId` | `quarkus-opentelemetry` auto-instrumenta endpoints JAX-RS | Nativo — sem código adicional |
+| Propagação W3C TraceContext entre serviços | Cabeçalho `traceparent` via `quarkus-opentelemetry` | Nativo — sem código adicional |
+| Registro de início, fim e metadados por span | CDI `@AroundInvoke` com OTel `Tracer` | `@Rastreado` + `RastreamentoInterceptor` |
+| Exportação para backend configurável | `application.properties` + OTLP | Configuração — sem código adicional |
+| `traceId` em cada linha de log | MDC populado pelo `GerenciadorContextoLog` | `LogContextoFiltro` + `GerenciadorContextoLog` |
+
+---
+
 #### 14.2. Dependências Maven
+
+A API do OpenTelemetry já está disponível transitivamente via `quarkus-opentelemetry`. Nenhuma dependência adicional é necessária para a camada de tracing.
+
+```xml
+<!--
+    Provê auto-instrumentação HTTP, cliente REST e banco de dados.
+    Expõe io.opentelemetry.api.trace.Tracer injetável via CDI.
+    Exporta traces via OTLP para o backend configurado.
+-->
+<dependency>
+    <groupId>io.quarkus</groupId>
+    <artifactId>quarkus-opentelemetry</artifactId>
+</dependency>
+
+<!--
+    Garante propagação do span OTel ativo e do MDC
+    em pipelines reativos Mutiny/Vert.x.
+    Obrigatório para métodos que retornam Uni<T> ou Multi<T>.
+    Ver seção 7 para o comportamento sem esta dependência.
+-->
+<dependency>
+    <groupId>io.quarkus</groupId>
+    <artifactId>quarkus-smallrye-context-propagation</artifactId>
+</dependency>
+```
 
 ---
 
@@ -1337,9 +1868,160 @@ LogContextoFiltro.filter(response)    ← MDC: limpo completamente (MDC.clear())
 
 #### 15.1. Ciclo de Vida do Child Span
 
+A anotação `@Rastreado` é um `@InterceptorBinding` CDI que ativa o `RastreamentoInterceptor` — um interceptor `@AroundInvoke` que encapsula o ciclo de vida completo de um Child Span OTel para cada método interceptado.
+
+```java
+package br.com.seudominio.log.annotations;
+
+import jakarta.interceptor.InterceptorBinding;
+import java.lang.annotation.*;
+
+/**
+ * Ativa rastreamento distribuído para um bean ou método CDI.
+ *
+ * Quando aplicada, o RastreamentoInterceptor cria um Child Span no span OTel ativo,
+ * registra metadados da operação (classe, método, início/fim) e propaga o spanId
+ * atualizado para o MDC — mantendo a correlação com os logs emitidos dentro do método.
+ *
+ * Pode ser combinada com @Logged no mesmo bean sem conflito:
+ * @Logged gerencia o MDC de logging; @Rastreado gerencia o span OTel.
+ * Quando usadas juntas, a ordem de execução é controlada por @Priority:
+ * RastreamentoInterceptor executa primeiro (cria o span), depois LogInterceptor.
+ */
+@InterceptorBinding
+@Target({ElementType.TYPE, ElementType.METHOD})
+@Retention(RetentionPolicy.RUNTIME)
+@Inherited
+public @interface Rastreado {}
+```
+
+O ciclo de vida do Child Span em cada invocação:
+
+```
+Antes do método:
+  1. Captura spanId do pai (MDC corrente) — para restauração no finally
+  2. Cria Child Span via Tracer.spanBuilder(nomeSpan).setParent(Context.current())
+  3. Torna o Child Span corrente via span.makeCurrent() — retorna Scope
+  4. Atualiza MDC: spanId ← spanId do Child Span
+  5. Executa pipeline de enriquecimento (EnriquecedorSpan em ordem de prioridade)
+
+Método de negócio executa — logs emitidos aqui têm spanId do Child Span
+
+Em caso de exceção:
+  6. span.setStatus(ERROR) + span.recordException(e)
+
+No finally (sempre):
+  7. scope.close()            — restaura o span pai como corrente no contexto OTel
+  8. span.end()               — registra end_time e envia para o exportador
+  9. MDC: spanId ← spanId do pai restaurado
+```
+
+```java
+package br.com.seudominio.log.interceptor;
+
+import br.com.seudominio.log.annotations.Rastreado;
+import br.com.seudominio.log.tracing.GerenciadorRastreamento;
+import jakarta.annotation.Priority;
+import jakarta.interceptor.AroundInvoke;
+import jakarta.interceptor.Interceptor;
+import jakarta.interceptor.InvocationContext;
+import org.jboss.logging.MDC;
+
+@Rastreado
+@Interceptor
+@Priority(Interceptor.Priority.APPLICATION - 10)   // executa antes do LogInterceptor
+public class RastreamentoInterceptor {
+
+    GerenciadorRastreamento gerenciador;
+
+    public RastreamentoInterceptor(GerenciadorRastreamento gerenciador) {
+        this.gerenciador = gerenciador;
+    }
+
+    @AroundInvoke
+    public Object rastrear(InvocationContext contexto) throws Exception {
+        var metodo     = contexto.getMethod();
+        var classe     = metodo.getDeclaringClass().getSimpleName();
+        var nomeMetodo = metodo.getName();
+        var nomeSpan   = classe + "." + nomeMetodo;
+
+        // Salva o spanId do pai antes de criar o Child Span
+        var spanIdPai = (String) MDC.get("spanId");
+
+        var contextoSpan = gerenciador.iniciar(nomeSpan, contexto);
+        try {
+            return contexto.proceed();
+        } catch (Exception e) {
+            gerenciador.marcarErro(contextoSpan, e);
+            throw e;
+        } finally {
+            // Restaura o spanId do pai — independente de exceção
+            gerenciador.encerrar(contextoSpan, spanIdPai);
+        }
+    }
+}
+```
+
+---
+
 #### 15.2. Ordem de Execução com `@Logged`: Priority CDI
 
+Quando `@Logged` e `@Rastreado` são aplicados ao mesmo bean, a ordem de execução dos interceptors é determinada por `@Priority`. A convenção da biblioteca:
+
+```
+@Priority(APPLICATION - 10)  →  RastreamentoInterceptor  (prioridade numericamente menor = executa primeiro)
+@Priority(APPLICATION)       →  LogInterceptor            (prioridade numericamente maior = executa depois)
+```
+
+Resultado da pilha de execução:
+
+```
+Requisição HTTP chega
+  └─ RastreamentoInterceptor.antes()
+       ├─ Captura spanId do pai
+       ├─ Cria Child Span, torna corrente
+       ├─ Atualiza MDC: spanId ← Child Span
+       └─ LogInterceptor.antes()
+            ├─ Registra classe/metodo no MDC
+            ├─ Inicia Timer Micrometer
+            └─ Método de negócio()
+                 └─ Logs aqui têm: traceId + spanId (Child Span) + classe + metodo
+            └─ LogInterceptor.finally()
+                 ├─ Para Timer Micrometer
+                 └─ Remove classe/metodo do MDC
+  └─ RastreamentoInterceptor.finally()
+       ├─ scope.close() — restaura span pai como corrente
+       ├─ span.end()    — registra end_time, exporta
+       └─ MDC: spanId ← spanId do pai restaurado
+```
+
+**Por que a ordem importa:** se `LogInterceptor` executasse primeiro, o Timer Micrometer mediria a duração incluindo a criação do Child Span pelo `RastreamentoInterceptor` — que é overhead de infraestrutura, não do método de negócio. Com `RastreamentoInterceptor` primeiro, o Timer mede apenas o método de negócio — comportamento correto.
+
+Adicionalmente: o `spanId` do Child Span já está no MDC quando o `LogInterceptor` registra `classe` e `metodo`. Todos os logs do método terão o `spanId` correto desde o primeiro evento.
+
+---
+
 #### 15.3. Restauração do `spanId` do Pai no `finally`
+
+A restauração do `spanId` do pai no `finally` não é um detalhe de implementação — é um requisito de correção.
+
+O MDC é `ThreadLocal`. Após o `RastreamentoInterceptor` atualizar o `spanId` para o Child Span, o método de negócio e todos os seus logs usam esse valor. Ao final do método, se o `spanId` não for restaurado, os logs emitidos após o retorno — em camadas superiores da pilha, no `LogContextoFiltro`, em outros métodos interceptados na mesma thread — continuarão usando o `spanId` do Child Span, que já foi encerrado.
+
+O resultado: logs fora do escopo do método `@Rastreado` apontando para um `spanId` de um span encerrado — span que não existirá no Jaeger para quem tentar navegar por ele.
+
+```java
+// No finally do RastreamentoInterceptor
+} finally {
+    gerenciador.encerrar(contextoSpan, spanIdPai);
+    // GerenciadorRastreamento.encerrar():
+    //   scope.close()                         ← restaura span pai no contexto OTel
+    //   span.end()                            ← encerra o Child Span
+    //   MDC.put("spanId", spanIdPai)          ← restaura spanId do pai no MDC
+    //   — ou MDC.remove("spanId") se spanIdPai == null (método era o Root Span)
+}
+```
+
+**Caso de borda — método sem span pai:** quando `@Rastreado` é aplicado em um método chamado fora de um contexto de requisição HTTP (ex: job agendado, consumidor de mensagem), `spanIdPai` pode ser `null`. O `GerenciadorRastreamento.encerrar()` trata esse caso removendo o campo `spanId` do MDC em vez de restaurá-lo — evitando que um valor `null` apareça no JSON como `"spanId": "null"`.
 
 ---
 
@@ -1347,21 +2029,368 @@ LogContextoFiltro.filter(response)    ← MDC: limpo completamente (MDC.clear())
 
 #### 16.1. Criação, Enriquecimento e Encerramento
 
-#### 16.2. Marcação de Erro e `recordException`
+O `GerenciadorRastreamento` centraliza toda a lógica OTel — criação, enriquecimento e encerramento de spans. Essa separação tem dois objetivos: tornar o `RastreamentoInterceptor` um coordenador simples sem lógica OTel direta, e tornar cada responsabilidade testável de forma isolada sem a pilha CDI completa.
 
-#### 16.3. Sincronização com o MDC
+O pipeline de enriquecimento usa `Instance<EnriquecedorSpan>` do CDI — o `GerenciadorRastreamento` não tem conhecimento de nenhuma implementação concreta. Novos enriquecedores são descobertos automaticamente quando declarados como beans `@ApplicationScoped` — sem alteração nesta classe.
+
+```java
+package br.com.seudominio.log.tracing;
+
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanKind;
+import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Instance;
+import jakarta.interceptor.InvocationContext;
+import org.jboss.logging.MDC;
+
+import java.util.Comparator;
+
+@ApplicationScoped
+public class GerenciadorRastreamento {
+
+    private static final String CAMPO_SPAN_ID = "spanId";
+
+    private final Tracer                    tracer;
+    private final Instance<EnriquecedorSpan> enriquecedores;
+
+    public GerenciadorRastreamento(Tracer tracer,
+                                   Instance<EnriquecedorSpan> enriquecedores) {
+        this.tracer        = tracer;
+        this.enriquecedores = enriquecedores;
+    }
+
+    /**
+     * Cria um Child Span e executa o pipeline de enriquecimento.
+     *
+     * Fluxo:
+     *   1. Cria span filho a partir do contexto OTel ativo (Context.current())
+     *   2. Torna o span filho corrente (Scope)
+     *   3. Atualiza o MDC com o spanId do filho
+     *   4. Executa os enriquecedores em ordem crescente de prioridade
+     */
+    public ContextoSpan iniciar(String nomeSpan, InvocationContext contexto) {
+        var span = tracer.spanBuilder(nomeSpan)
+                .setParent(Context.current())
+                .setSpanKind(SpanKind.INTERNAL)
+                .startSpan();
+
+        var scope = span.makeCurrent();
+
+        // Atualiza o MDC com o spanId do Child Span recém-criado.
+        // O valor anterior (spanId do pai) foi salvo pelo RastreamentoInterceptor
+        // antes de chamar iniciar() — e será restaurado em encerrar().
+        MDC.put(CAMPO_SPAN_ID, span.getSpanContext().getSpanId());
+
+        enriquecedores.stream()
+                .sorted(Comparator.comparingInt(EnriquecedorSpan::prioridade))
+                .forEach(e -> e.enriquecer(span, contexto));
+
+        return new ContextoSpan(span, scope);
+    }
+
+    /**
+     * Encerra o span e restaura o spanId do pai no MDC.
+     *
+     * Executado sempre no finally — independente de exceção.
+     * Falhas de infraestrutura OTel são absorvidas para não interromper o negócio.
+     */
+    public void encerrar(ContextoSpan ctx, String spanIdPai) {
+        try {
+            ctx.scope().close();   // restaura o span pai como corrente no contexto OTel
+            ctx.span().end();      // registra end_time e envia ao exportador
+        } catch (Exception e) {
+            // Falha de infraestrutura — nunca interrompe o fluxo de negócio
+        } finally {
+            if (spanIdPai != null) {
+                MDC.put(CAMPO_SPAN_ID, spanIdPai);
+            } else {
+                MDC.remove(CAMPO_SPAN_ID);
+            }
+        }
+    }
+
+    /** Marca o span como ERROR e registra a exceção como evento do span. */
+    public void marcarErro(ContextoSpan ctx, Throwable causa) {
+        try {
+            ctx.span().setStatus(StatusCode.ERROR, causa.getMessage());
+            ctx.span().recordException(causa);
+        } catch (Exception e) {
+            // Falha de infraestrutura — nunca interrompe o fluxo de negócio
+        }
+    }
+
+    public record ContextoSpan(Span span, Scope scope) {}
+}
+```
 
 ---
 
+#### 16.2. Marcação de Erro e `recordException`
+
+Quando o método interceptado lança uma exceção, o `RastreamentoInterceptor` chama `gerenciador.marcarErro(contextoSpan, e)` antes de relançar a exceção. Isso produz dois efeitos no span:
+
+**`setStatus(ERROR, mensagem)`:** marca o span com status `ERROR` no backend de traces. Jaeger e Grafana Tempo filtram traces por status — permitindo isolar traces problemáticos sem varrer todos os traces na janela de tempo.
+
+**`recordException(causa)`:** adiciona um evento de span do tipo `exception` com os campos `exception.type`, `exception.message` e `exception.stacktrace` — definidos nas OTel Semantic Conventions. A exceção fica visível na linha do tempo do span no Jaeger, no ponto exato onde ocorreu, sem necessidade de navegar para os logs.
+
+```
+Span: PagamentoService.processar  [0ms ────────────────── ERROR ── 180ms]
+  │
+  └─ Event: exception (em 178ms)
+       exception.type:       "br.com.dominio.GatewayException"
+       exception.message:    "INSUFFICIENT_FUNDS"
+       exception.stacktrace: "br.com.dominio.GatewayException: INSUFFICIENT_FUNDS
+                               at br.com.dominio.GatewayClient.cobrar(GatewayClient.java:42)
+                               ..."
+```
+
+**Isolamento de falhas de infraestrutura:** ambas as chamadas — `setStatus` e `recordException` — estão em bloco `try-catch`. Uma falha no exportador OTel, no SDK ou em qualquer componente de infraestrutura de observabilidade absorve a exceção localmente e não interfere na propagação da exceção original do negócio. A observabilidade nunca é justificativa para falhar uma operação de negócio.
+
+---
+
+#### 16.3. Sincronização com o MDC
+
+A sincronização entre o span OTel e o MDC ocorre em dois momentos no `GerenciadorRastreamento`:
+
+**Na criação do Child Span (`iniciar`):** após `span.makeCurrent()`, o Child Span é o span corrente no contexto OTel. O MDC é atualizado imediatamente com o `spanId` do Child Span. A partir deste ponto, todos os logs emitidos na thread corrente — incluindo os do método de negócio — carregam o `spanId` do Child Span.
+
+**No encerramento (`encerrar`):** após `scope.close()`, o span pai volta a ser o span corrente no contexto OTel. O MDC é restaurado com o `spanId` do pai. A partir deste ponto, logs emitidos após o retorno do método `@Rastreado` voltam a carregar o `spanId` do pai.
+
+```
+MDC.spanId antes do @Rastreado: "a3ce929d0e0e4736"   (Root Span ou Span pai)
+                                  │
+  GerenciadorRastreamento.iniciar()
+  MDC.spanId durante o @Rastreado: "b7df840f1a2c3e51"  (Child Span criado pelo @Rastreado)
+                                  │
+  GerenciadorRastreamento.encerrar()
+MDC.spanId após o @Rastreado: "a3ce929d0e0e4736"    (restaurado ao valor anterior)
+```
+
+**Relação com o `quarkus-smallrye-context-propagation`:** a sincronização descrita acima garante o `spanId` correto no MDC para código síncrono. Para continuations reativas (`Uni`, `Multi`), o `quarkus-smallrye-context-propagation` propaga o contexto OTel — incluindo o span corrente — entre trocas de thread do Vert.x. O `GerenciadorContextoLog` lê `Span.current().getSpanContext()` no momento de cada emissão de log, garantindo o `spanId` correto independente de qual thread do pool Vert.x executou o continuation. Ver seção 7 para o comportamento detalhado em contexto reativo.
+
+---
 ### 17. Pipeline de Enriquecimento de Spans
 
 #### 17.1. Interface `EnriquecedorSpan` e Descoberta via CDI
 
+O pipeline de enriquecimento é o mecanismo pelo qual atributos OTel são adicionados a cada span criado pelo `@Rastreado`. A extensibilidade é garantida pela interface `EnriquecedorSpan` — o `GerenciadorRastreamento` não tem conhecimento de nenhuma implementação concreta e não precisa ser modificado quando novos atributos de negócio são adicionados.
+
+```java
+package br.com.seudominio.log.tracing;
+
+import io.opentelemetry.api.trace.Span;
+import jakarta.interceptor.InvocationContext;
+
+/**
+ * Contrato do pipeline de enriquecimento de spans.
+ *
+ * Implementações são descobertas automaticamente pelo CDI via
+ * Instance<EnriquecedorSpan> no GerenciadorRastreamento.
+ * Novos atributos obrigatórios ou de negócio entram como novos beans
+ * @ApplicationScoped sem alterar o núcleo da biblioteca.
+ */
+public interface EnriquecedorSpan {
+
+    /**
+     * Enriquece o span com atributos OTel.
+     *
+     * @param span     span ativo no momento da interceptação
+     * @param contexto contexto CDI — use getParameters() para acessar
+     *                 os argumentos reais do método interceptado
+     */
+    void enriquecer(Span span, InvocationContext contexto);
+
+    /**
+     * Ordem de execução no pipeline — valor menor executa primeiro.
+     * Padrão: Integer.MAX_VALUE.
+     */
+    default int prioridade() {
+        return Integer.MAX_VALUE;
+    }
+}
+```
+
+**Bandas de prioridade convencionadas:**
+
+| Faixa | Tipo | Responsável |
+|---|---|---|
+| 1–50 | Atributos técnicos obrigatórios — OTel Semantic Conventions | Biblioteca (`EnriquecedorMetadados`, `EnriquecedorIdentidade`) |
+| 100–499 | Atributos de negócio por domínio | Time de desenvolvimento da aplicação |
+| 500+ | Atributos transversais de plataforma | Times de infraestrutura ou plataforma |
+
+A separação em bandas evita colisão de prioridade entre enriquecedores da biblioteca e enriquecedores da aplicação. Enriquecedores de negócio com prioridade 100+ sempre executam após os atributos técnicos obrigatórios já estarem presentes no span.
+
+---
+
 #### 17.2. `EnriquecedorMetadados` — OTel Semantic Conventions
+
+Adiciona os atributos técnicos obrigatórios definidos pelas [OTel Code Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/code/). Executa primeiro no pipeline (prioridade 10).
+
+```java
+package br.com.seudominio.log.tracing;
+
+import io.opentelemetry.api.trace.Span;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import jakarta.interceptor.InvocationContext;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+
+@ApplicationScoped
+public class EnriquecedorMetadados implements EnriquecedorSpan {
+
+    @ConfigProperty(name = "quarkus.application.name")
+    String applicationName;
+
+    @Override
+    public void enriquecer(Span span, InvocationContext contexto) {
+        var metodo = contexto.getMethod();
+        var classe = metodo.getDeclaringClass();
+
+        span.setAttribute("service.name",    applicationName);
+        span.setAttribute("code.namespace",  classe.getName());
+        span.setAttribute("code.function",   metodo.getName());
+    }
+
+    @Override
+    public int prioridade() { return 10; }
+}
+```
+
+Atributos resultantes:
+
+| Atributo OTel | Exemplo de valor | Uso no Jaeger/Grafana Tempo |
+|---|---|---|
+| `service.name` | `"pagamentos-service"` | Filtro de serviço na visão de trace; identificação do nó na malha |
+| `code.namespace` | `"br.com.dominio.PagamentoService"` | Identificação precisa da classe — evita ambiguidade entre classes homônimas em pacotes diferentes |
+| `code.function` | `"processar"` | Identificação do método — visível na linha do tempo do span |
+
+O `service.name` em cada span é o que permite ao Jaeger construir o grafo de chamadas entre serviços — mostrando quais microsserviços se comunicam e com qual latência. Sem esse atributo, todos os spans de uma requisição apareceriam como pertencentes ao mesmo serviço.
+
+---
 
 #### 17.3. `EnriquecedorIdentidade` — `enduser.id` via `SecurityIdentity`
 
+Adiciona a identidade do usuário autenticado ao span. Executa após `EnriquecedorMetadados` (prioridade 20). Usa `Instance<SecurityIdentity>` com guarda `isResolvable()` — nunca lança `ContextNotActiveException` em contextos sem requisição HTTP ativa (jobs, consumidores de fila).
+
+```java
+package br.com.seudominio.log.tracing;
+
+import io.opentelemetry.api.trace.Span;
+import io.quarkus.security.identity.SecurityIdentity;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Instance;
+import jakarta.inject.Inject;
+import jakarta.interceptor.InvocationContext;
+
+@ApplicationScoped
+public class EnriquecedorIdentidade implements EnriquecedorSpan {
+
+    @Inject
+    Instance<SecurityIdentity> identityInstance;
+
+    @Override
+    public void enriquecer(Span span, InvocationContext contexto) {
+        if (!identityInstance.isResolvable()) return;
+
+        var identity = identityInstance.get();
+        if (identity == null || identity.isAnonymous()) return;
+
+        span.setAttribute("enduser.id", identity.getPrincipal().getName());
+    }
+
+    @Override
+    public int prioridade() { return 20; }
+}
+```
+
+**Por que `enduser.id` no span e `userId` no MDC são complementares:**
+
+O `userId` no MDC garante que cada linha de log carregue a identidade do usuário. O `enduser.id` no span garante que a identidade apareça no grafo do Jaeger/Grafana Tempo — permitindo filtrar traces por usuário diretamente na UI do backend de tracing, sem navegar para os logs. Em investigações de incidente com impacto restrito a um usuário específico, essa filtragem reduz significativamente o escopo de análise.
+
+---
+
 #### 17.4. Enriquecedores de Negócio Customizados
+
+Enriquecedores de negócio implementam `EnriquecedorSpan`, são anotados com `@ApplicationScoped` e são descobertos automaticamente pelo CDI sem qualquer alteração no `GerenciadorRastreamento`. O `InvocationContext.getParameters()` expõe os argumentos reais da invocação — útil para extrair identificadores de domínio visíveis no Jaeger sem alterar o código de negócio.
+
+**Exemplo 1 — Atributos de domínio por método:**
+
+```java
+/**
+ * Enriquece spans do EstoqueService com atributos de reserva de estoque.
+ * Prioridade 100: executa após os enriquecedores de infraestrutura (10 e 20).
+ */
+@ApplicationScoped
+public class EnriquecedorEstoque implements EnriquecedorSpan {
+
+    @Override
+    public void enriquecer(Span span, InvocationContext contexto) {
+        if (!"reservar".equals(contexto.getMethod().getName())) return;
+
+        var params = contexto.getParameters();
+        if (params == null || params.length < 2) return;
+
+        // Java 21: pattern matching com instanceof — sem cast explícito
+        if (params[0] instanceof String sku && params[1] instanceof Integer quantidade) {
+            span.setAttribute("estoque.sku",        sku);
+            span.setAttribute("estoque.quantidade", String.valueOf(quantidade));
+        }
+    }
+
+    @Override
+    public int prioridade() { return 100; }
+}
+```
+
+**Exemplo 2 — Atributos de domínio por tipo de argumento:**
+
+```java
+/**
+ * Enriquece qualquer span cujo primeiro argumento seja uma OrdemPagamento.
+ * Adiciona identificadores de negócio visíveis na timeline do Jaeger.
+ */
+@ApplicationScoped
+public class EnriquecedorOrdemPagamento implements EnriquecedorSpan {
+
+    @Override
+    public void enriquecer(Span span, InvocationContext contexto) {
+        var params = contexto.getParameters();
+        if (params == null || params.length == 0) return;
+
+        if (params[0] instanceof OrdemPagamento ordem) {
+            span.setAttribute("pagamento.ordemId",  ordem.getId());
+            span.setAttribute("pagamento.valor",    ordem.getValor().toString());
+            span.setAttribute("pagamento.moeda",    ordem.getMoeda());
+            span.setAttribute("pagamento.gateway",  ordem.getGateway());
+        }
+    }
+
+    @Override
+    public int prioridade() { return 110; }
+}
+```
+
+**Atributos resultantes em um span `PagamentoService.processar`:**
+
+| Atributo | Origem | Visível em |
+|---|---|---|
+| `service.name` | `EnriquecedorMetadados` | Jaeger — grafo de serviços |
+| `code.namespace` | `EnriquecedorMetadados` | Jaeger — detalhe do span |
+| `code.function` | `EnriquecedorMetadados` | Jaeger — detalhe do span |
+| `enduser.id` | `EnriquecedorIdentidade` | Jaeger — filtro por usuário |
+| `pagamento.ordemId` | `EnriquecedorOrdemPagamento` | Jaeger — busca por ID de ordem |
+| `pagamento.valor` | `EnriquecedorOrdemPagamento` | Jaeger — detalhe do span |
+| `pagamento.gateway` | `EnriquecedorOrdemPagamento` | Jaeger — filtro por gateway |
+
+**Boas práticas para enriquecedores de negócio:**
+
+- Atributos de alta cardinalidade (IDs de entidade) são adequados em spans — ao contrário de tags de métricas. O Jaeger armazena e busca por atributo de forma eficiente sem o risco de explosão de cardinalidade do Prometheus.
+- Nunca adicionar dados sensíveis (CPF, token, senha) como atributo de span — os spans são armazenados no backend de tracing sem mascaramento automático.
+- Manter o escopo do enriquecedor restrito ao método ou tipo de argumento que o justifica — evitar enriquecedores genéricos que adicionam atributos a todos os spans independente do contexto.
 
 ---
 
@@ -1369,35 +2398,338 @@ LogContextoFiltro.filter(response)    ← MDC: limpo completamente (MDC.clear())
 
 #### 18.1. `application.properties` — OTLP, Sampler e `service.name`
 
-#### 18.2. Tail-Based Sampling no OTel Collector
+```properties
+# ─── Identidade do Serviço ─────────────────────────────────────────────────────
 
-#### 18.3. Backends: Jaeger, Grafana Tempo, Zipkin
+# Nome único do microsserviço no ecossistema.
+# Aparece como rótulo em todos os spans, métricas e logs exportados.
+# Usado pelo EnriquecedorMetadados como atributo service.name em cada span.
+quarkus.application.name=pagamentos-service
+
+# ─── Exportação de Traces via OTLP ────────────────────────────────────────────
+
+# Endpoint do OTel Collector em produção.
+# Em desenvolvimento: pode apontar diretamente para Jaeger (porta 4317 gRPC).
+quarkus.otel.exporter.otlp.endpoint=http://otel-collector:4317
+
+# Protocolo de exportação: grpc (padrão, menor overhead) ou http/protobuf.
+# quarkus.otel.exporter.otlp.protocol=grpc
+
+# ─── Amostragem ───────────────────────────────────────────────────────────────
+
+# always_on: a aplicação emite 100% dos spans para o Collector.
+# Políticas de Tail-Based Sampling residem no OTel Collector — não na aplicação.
+# Alternativa para ambientes com restrição de volume: parentbased_traceidratio
+# com quarkus.otel.traces.sampler.arg=0.1 (10% dos traces raiz amostrados).
+quarkus.otel.traces.sampler=always_on
+
+# ─── Propagação de Contexto ────────────────────────────────────────────────────
+
+# W3C TraceContext é o padrão; configuração explícita apenas se necessário
+# adicionar suporte a outros formatos (B3, Jaeger legacy).
+# quarkus.otel.propagators=tracecontext,baggage
+
+# ─── Logging ──────────────────────────────────────────────────────────────────
+
+quarkus.log.console.json=true
+quarkus.log.level=INFO
+
+# ─── Métricas ─────────────────────────────────────────────────────────────────
+
+quarkus.micrometer.binder.http-server.ignore-patterns=/q/health.*,/q/metrics
+```
+
+**Configuração por perfil (dev vs. produção):**
+
+```properties
+# application-dev.properties — desenvolvimento local
+# Aponta diretamente para Jaeger sem OTel Collector intermediário
+%dev.quarkus.otel.exporter.otlp.endpoint=http://localhost:4317
+%dev.quarkus.log.level=DEBUG
+
+# application-prod.properties — produção OKD
+# Aponta para o OTel Collector do namespace de observabilidade
+%prod.quarkus.otel.exporter.otlp.endpoint=http://otel-collector.observabilidade.svc.cluster.local:4317
+%prod.quarkus.log.level=INFO
+```
 
 ---
 
+#### 18.2. Tail-Based Sampling no OTel Collector
+
+**Por que Tail-Based Sampling no Collector, não na aplicação:**
+
+O Head-Based Sampling (na aplicação) decide amostrar ou descartar um trace no início — antes de saber se ele conterá erros ou latência anômala. O resultado: traces de requisições problemáticas podem ser descartados exatamente quando mais importam.
+
+O Tail-Based Sampling (no Collector) decide *após* o trace completar. O Collector acumula todos os spans de um trace e, ao receber o span raiz com status `ERROR` ou latência acima do limiar, retém o trace completo — independente da taxa de amostragem configurada para traces normais.
+
+```yaml
+# otel-collector-config.yaml — configuração de Tail-Based Sampling
+processors:
+  tail_sampling:
+    decision_wait: 10s         # tempo máximo de espera por todos os spans do trace
+    num_traces: 100000         # traces em memória simultaneamente
+    policies:
+      # Política 1: sempre reter traces com erros
+      - name: erros
+        type: status_code
+        status_code: { status_codes: [ERROR] }
+
+      # Política 2: sempre reter traces com latência acima de 2 segundos
+      - name: latencia_alta
+        type: latency
+        latency: { threshold_ms: 2000 }
+
+      # Política 3: amostrar 10% dos traces normais (sem erro, sem latência alta)
+      - name: amostragem_normal
+        type: probabilistic
+        probabilistic: { sampling_percentage: 10 }
+```
+
+Com essa configuração, a aplicação emite 100% dos spans (`always_on`) e o Collector retém:
+- 100% dos traces com erro
+- 100% dos traces com latência acima de 2 segundos
+- 10% dos traces normais — suficiente para análise de tendência
+
+---
+
+#### 18.3. Backends: Jaeger, Grafana Tempo, Zipkin
+
+Todos os backends são configuráveis via `application.properties` sem alteração de código. A troca de backend é alteração de configuração do OTel Collector — a aplicação sempre exporta para o Collector via OTLP.
+
+| Backend | Endpoint no Collector | Característica principal |
+|---|---|---|
+| **Jaeger** | `http://jaeger:4317` (gRPC) | UI nativa para análise de traces; adequado como backend standalone |
+| **Grafana Tempo** | `http://tempo:4317` (gRPC) | Integração nativa com Loki e Prometheus no Grafana; navegação direta trace↔log↔métrica |
+| **Zipkin** | `http://zipkin:9411/api/v2/spans` (HTTP) | Alternativa madura; API REST amplamente suportada |
+| **Elastic APM** | `http://apm-server:8200` | Integração natural com índices Elasticsearch; correlação nativa com logs indexados no ELK |
+
+**Configuração do Collector para múltiplos backends simultâneos:**
+
+```yaml
+# otel-collector-config.yaml — exportação para Jaeger e Grafana Tempo em paralelo
+exporters:
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls: { insecure: false }
+
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls: { insecure: false }
+
+pipelines:
+  traces:
+    receivers:  [otlp]
+    processors: [tail_sampling, batch]
+    exporters:  [otlp/jaeger, otlp/tempo]   # ambos recebem os mesmos traces
+```
+
+Essa arquitetura permite migrar progressivamente de Jaeger para Grafana Tempo — ambos operando em paralelo durante o período de transição — sem nenhuma alteração nas aplicações.
+
+**Diagrama completo do pipeline em OKD:**
+
+```
+pagamentos-service (Quarkus)
+  ├─ Traces  ──┐
+  ├─ Métricas ─┤  OTLP/gRPC (porta 4317)
+  └─ Logs ─────┘
+                 │
+                 ▼
+         OTel Collector
+          (tail sampling,
+           enriquecimento,
+           roteamento)
+                 │
+                 ├──▶ Grafana Tempo    ← traces
+                 ├──▶ Prometheus       ← métricas (scrape /q/metrics)
+                 └──▶ Loki             ← logs
+                            │
+                       Grafana         ← visualização unificada
+                       (alerta → trace → log em um único painel)
+```
+---
 ## Parte V — Implementação: Métricas
 
 ### 19. Arquitetura de Métricas no Quarkus
 
 #### 19.1. Micrometer como Abstração
 
+O Quarkus usa **Micrometer** como abstração de métricas — a abordagem recomendada pela plataforma. O Micrometer define uma API unificada para os quatro tipos de medidores e um `MeterRegistry` que abstrai o backend de destino: o mesmo código de instrumentação funciona com Prometheus, Datadog, InfluxDB ou qualquer outro backend suportado, alterando apenas a dependência Maven e a configuração.
+
+Essa separação entre API de instrumentação e backend de exportação é o que garante que o código de negócio não precise conhecer o destino das métricas — e que uma migração de Prometheus para OTLP não exija alteração em nenhum ponto de instrumentação.
+
+---
+
 #### 19.2. Extensões Maven: Prometheus vs. OTLP
+
+```xml
+<!--
+    Micrometer core + integração Quarkus + exportação Prometheus.
+    Expõe /q/metrics automaticamente no HTTP server principal.
+    Use quando o stack já tem Prometheus como coletor de métricas.
+-->
+<dependency>
+    <groupId>io.quarkus</groupId>
+    <artifactId>quarkus-micrometer-registry-prometheus</artifactId>
+</dependency>
+
+<!--
+    Alternativa: exportação unificada via OTLP.
+    Métricas, traces e logs compartilham o mesmo pipeline de saída.
+    Recomendado quando o OTel Collector já está no pipeline —
+    elimina o Prometheus como coletor separado.
+    Substitui quarkus-micrometer-registry-prometheus.
+-->
+<dependency>
+    <groupId>io.quarkus</groupId>
+    <artifactId>quarkus-micrometer-opentelemetry</artifactId>
+</dependency>
+```
+
+**Critério de escolha:**
+
+| Cenário | Extensão recomendada |
+|---|---|
+| Stack com Prometheus + Grafana já operacional | `quarkus-micrometer-registry-prometheus` |
+| OTel Collector já no pipeline (traces ativos) | `quarkus-micrometer-opentelemetry` |
+| Migração progressiva Prometheus → OTLP | Ambas em paralelo — `CompositeMeterRegistry` replica para os dois backends |
+
+---
 
 #### 19.3. Configuração: `application.properties`
 
+```properties
+# ─── Prometheus ────────────────────────────────────────────────────────────────
+
+# Habilita endpoint /q/metrics para scrape pelo Prometheus
+quarkus.micrometer.export.prometheus.enabled=true
+
+# Ignorar endpoints internos — evita ruído nas métricas HTTP da aplicação
+quarkus.micrometer.binder.http-server.ignore-patterns=/q/health.*,/q/metrics
+
+# ─── Tags globais (baixa cardinalidade — aplicadas a todas as métricas) ────────
+# quarkus.micrometer.tags.application=${quarkus.application.name}
+# quarkus.micrometer.tags.environment=${quarkus.profile}
+
+# ─── OTLP (alternativa ao Prometheus) ─────────────────────────────────────────
+# Quando usar quarkus-micrometer-opentelemetry, métricas são enviadas
+# pelo mesmo endpoint OTLP configurado para traces — sem configuração adicional.
+# quarkus.otel.exporter.otlp.endpoint=http://otel-collector:4317
+```
+
+---
+
 #### 19.4. `MeterRegistry` via CDI
+
+O `MeterRegistry` é injetável diretamente via CDI — sem fábrica manual, sem configuração adicional. A injeção via construtor é preferida por tornar as dependências explícitas e facilitar testes unitários com `SimpleMeterRegistry`:
+
+```java
+@ApplicationScoped
+public class PedidoService {
+
+    private final MeterRegistry meterRegistry;
+
+    // Injeção via construtor — preferida para testabilidade
+    public PedidoService(MeterRegistry meterRegistry) {
+        this.meterRegistry = meterRegistry;
+    }
+}
+```
+
+O Quarkus configura e gerencia o ciclo de vida do `MeterRegistry`. Quando múltiplos backends estão configurados — ex: Prometheus + OTLP — o Quarkus cria um `CompositeMeterRegistry` que replica cada medição para todos os backends registrados, sem alteração no código de instrumentação.
+
+**Em testes unitários**, substituir por `SimpleMeterRegistry`:
+
+```java
+var registry = new SimpleMeterRegistry();
+var service  = new PedidoService(registry);
+
+service.criar(request);
+
+// Verifica que o counter foi incrementado com as tags corretas
+assertThat(registry.counter("pedido.criado", "canal", "checkout").count())
+    .isEqualTo(1.0);
+```
 
 ---
 
 ### 20. Métricas Automáticas do Quarkus
 
+Com `quarkus-micrometer-registry-prometheus` instalado, o Quarkus instrumenta automaticamente os seguintes componentes sem nenhuma linha de código adicional:
+
 #### 20.1. Requisições HTTP (RESTEasy Reactive)
+
+```
+http_server_requests_seconds_count{method, uri, status, outcome}
+http_server_requests_seconds_sum{method, uri, status, outcome}
+http_server_requests_seconds_max{method, uri, status, outcome}
+# com publishPercentileHistogram habilitado:
+http_server_requests_seconds_bucket{method, uri, status, outcome, le}
+```
+
+Queries úteis:
+
+```promql
+# Taxa de requisições por segundo no endpoint POST /pedidos
+rate(http_server_requests_seconds_count{method="POST", uri="/pedidos"}[1m])
+
+# Taxa de erro HTTP (status 5xx)
+rate(http_server_requests_seconds_count{outcome="SERVER_ERROR"}[5m])
+
+# p99 de latência do endpoint POST /pedidos
+histogram_quantile(0.99,
+    rate(http_server_requests_seconds_bucket{uri="/pedidos", method="POST"}[5m])
+)
+```
+
+---
 
 #### 20.2. JVM: Memória, GC, Threads
 
+```
+jvm_memory_used_bytes{area}               — heap e non-heap em uso
+jvm_memory_max_bytes{area}               — limite configurado
+jvm_gc_pause_seconds_count{action, cause} — ocorrências de pausa de GC
+jvm_gc_pause_seconds_sum{action, cause}   — tempo total em pausa de GC
+jvm_threads_live_threads                  — threads JVM ativas
+jvm_threads_daemon_threads               — threads daemon ativas
+jvm_classes_loaded_classes               — classes carregadas
+```
+
+Queries úteis:
+
+```promql
+# Percentual de heap utilizado
+jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes{area="heap"} * 100
+
+# Taxa de pausa de GC nos últimos 5 minutos
+rate(jvm_gc_pause_seconds_sum[5m])
+```
+
+---
+
 #### 20.3. Pool de Conexões (Agroal)
 
+```
+agroal_connection_pool_active_count{data_source}    — conexões em uso
+agroal_connection_pool_available_count{data_source} — conexões disponíveis
+agroal_connection_pool_waiting_count{data_source}   — threads aguardando conexão
+agroal_connection_pool_max_used_count{data_source}  — pico histórico de conexões
+```
+
+`agroal_connection_pool_waiting_count > 0` é o sinal mais direto de pool de conexões saturado — indica que threads de aplicação estão bloqueadas aguardando uma conexão disponível.
+
+---
+
 #### 20.4. Netty / Vert.x
+
+```
+allocator_memory_used_bytes{allocator_type, memory_type}
+allocator_pooled_allocations_total{allocator_type}
+netty_eventexecutor_tasks_pending_tasks{name}
+```
+
+As métricas Netty são relevantes para diagnóstico de problemas de alocação de memória fora do heap (direct memory) e backpressure no event loop do Vert.x.
 
 ---
 
@@ -1405,33 +2737,511 @@ LogContextoFiltro.filter(response)    ← MDC: limpo completamente (MDC.clear())
 
 #### 21.1. `metodo.execucao` — Timer com Histograma
 
-#### 21.2. `metodo.falha` — Counter por Tipo de Exceção
+O `LogInterceptor` registra automaticamente um Timer para cada método anotado com `@Logged`. Nenhuma instrumentação adicional é necessária — a anotação já é suficiente para cobrir latência e frequência do método.
 
-#### 21.3. PromQL: Taxa de Erro e Percentis por Método
+```
+metodo_execucao_seconds_count{classe, metodo}       — invocações totais (sucesso + erro)
+metodo_execucao_seconds_sum{classe, metodo}         — soma das durações
+metodo_execucao_seconds_max{classe, metodo}         — duração máxima na janela decrescente
+# com publishPercentileHistogram=true:
+metodo_execucao_seconds_bucket{classe, metodo, le}  — histograma para percentis
+```
+
+O histograma é o que torna possível calcular percentis no Prometheus a partir de múltiplas instâncias do serviço. Percentis pré-calculados na aplicação (`percentiles = {0.95, 0.99}`) não são reagregáveis — uma média de percentis entre instâncias é matematicamente incorreta. O histograma armazena os buckets e o Prometheus calcula o percentil correto sobre a soma:
+
+```promql
+# p99 de latência do PedidoService.criar — correto para múltiplas instâncias
+histogram_quantile(0.99,
+    sum by (le) (
+        rate(metodo_execucao_seconds_bucket{
+            classe="PedidoService",
+            metodo="criar"
+        }[5m])
+    )
+)
+
+# p95 de latência de todos os métodos do PagamentoService
+histogram_quantile(0.95,
+    sum by (le, metodo) (
+        rate(metodo_execucao_seconds_bucket{
+            classe="PagamentoService"
+        }[5m])
+    )
+)
+```
 
 ---
 
+#### 21.2. `metodo.falha` — Counter por Tipo de Exceção
+
+O `LogInterceptor` incrementa um counter a cada exceção lançada pelo método interceptado. A tag `excecao` carrega o `getSimpleName()` da classe de exceção — tornando possível detectar picos de um tipo específico de exceção sem abrir os logs:
+
+```
+metodo_falha_total{classe, metodo, excecao}
+```
+
+Exemplos de valores da tag `excecao`:
+- `"GatewayException"` — falha de integração com gateway externo
+- `"DatabaseException"` — falha de persistência
+- `"ValidationException"` — dado inválido recebido
+- `"TimeoutException"` — timeout em chamada downstream
+
+```promql
+# Taxa de GatewayException por segundo no PagamentoService.processar
+rate(metodo_falha_total{
+    classe="PagamentoService",
+    metodo="processar",
+    excecao="GatewayException"
+}[2m])
+
+# Comparação entre tipos de exceção no mesmo método — diagrama de pizza no Grafana
+sum by (excecao) (
+    rate(metodo_falha_total{classe="PagamentoService", metodo="processar"}[10m])
+)
+```
+
+**Proteção contra falha de infraestrutura:** o `MeterRegistry` pode estar temporariamente indisponível (timeout de exportação, backend reiniciando). A incrementação do counter está em bloco `try-catch` — uma falha de infraestrutura de observabilidade não propaga como exceção de negócio e não impede o relançamento da exceção original:
+
+```java
+} catch (Exception excecaoNegocio) {
+    try {
+        registry.counter("metodo.falha",
+            "classe",  classe,
+            "metodo",  nomeMetodo,
+            "excecao", excecaoNegocio.getClass().getSimpleName()
+        ).increment();
+    } catch (Exception metricaFalhou) {
+        // Falha de infraestrutura de observabilidade — absorvida localmente
+        log.warn("Falha ao registrar métrica metodo.falha: {}", metricaFalhou.getMessage());
+    }
+    throw excecaoNegocio;   // exceção de negócio original sempre é relançada
+}
+```
+
+---
+
+#### 21.3. PromQL: Taxa de Erro e Percentis por Método
+
+O par `metodo.execucao` + `metodo.falha` permite calcular taxa de erro por método diretamente no Prometheus — sem depender de logs para saber se um método está falhando e com qual frequência:
+
+```promql
+# Taxa de erro do PedidoService.criar nos últimos 5 minutos (proporção)
+rate(metodo_falha_total{classe="PedidoService", metodo="criar"}[5m])
+/
+rate(metodo_execucao_seconds_count{classe="PedidoService", metodo="criar"}[5m])
+
+# Taxa de erro em percentual — para alerta com limiar de 5%
+(
+    rate(metodo_falha_total{classe="PagamentoService", metodo="processar"}[5m])
+    /
+    rate(metodo_execucao_seconds_count{classe="PagamentoService", metodo="processar"}[5m])
+) * 100 > 5
+```
+
+**Configuração de alerta — combinando latência e taxa de erro:**
+
+```yaml
+# alertmanager rules
+groups:
+  - name: metodo_slo
+    rules:
+      - alert: LatenciaP99Alta
+        expr: |
+          histogram_quantile(0.99,
+            rate(metodo_execucao_seconds_bucket{
+              classe="PagamentoService", metodo="processar"
+            }[5m])
+          ) > 2
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p99 de PagamentoService.processar acima de 2s"
+
+      - alert: TaxaErroAlta
+        expr: |
+          rate(metodo_falha_total{classe="PagamentoService", metodo="processar"}[5m])
+          /
+          rate(metodo_execucao_seconds_count{classe="PagamentoService", metodo="processar"}[5m])
+          > 0.05
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Taxa de erro de PagamentoService.processar acima de 5%"
+```
+
+**Fluxo de correlação durante um alerta:**
+
+```
+1. Alerta LatenciaP99Alta dispara (Prometheus/Grafana)
+   └─ metodo_execucao_seconds p99 > 2s — PagamentoService.processar
+
+2. Análise de tendência (Grafana)
+   └─ histograma: degradação gradual nas últimas 2h
+   └─ counter: GatewayException concentra 80% das falhas
+
+3. Localização do span problemático (Jaeger/Grafana Tempo)
+   └─ traces com status=ERROR filtrados por serviço e janela
+   └─ grafo: GatewayClient.cobrar leva 1,8s dos 2s totais
+
+4. Diagnóstico detalhado (Kibana/Loki)
+   └─ filtrar por traceId do trace com maior latência
+   └─ logs: userId, pedidoId, código de erro do gateway, stack trace
+```
+
+O `traceId` presente nos logs é a chave que navega do alerta de métrica até o contexto exato da falha — sem varredura manual.
+
+---
 ### 22. Métricas de Negócio Customizadas
 
 #### 22.1. Counter — Eventos de Negócio
 
+O Counter é o instrumento correto para eventos de negócio que ocorrem e são contados. Tags de baixa cardinalidade — canal, região, tipo de produto — são os atributos que tornam o counter multidimensional sem risco de explosão de séries temporais.
+
+```java
+@ApplicationScoped
+public class PedidoService {
+
+    private final MeterRegistry meterRegistry;
+
+    public PedidoService(MeterRegistry meterRegistry) {
+        this.meterRegistry = meterRegistry;
+    }
+
+    public Pedido criar(NovoPedidoRequest request) {
+        var pedido = repository.salvar(new Pedido(request));
+
+        // Counter com tags de baixa cardinalidade — conjunto fechado de valores
+        meterRegistry.counter("pedido.criado",
+            "canal",  request.canal(),     // "checkout", "app", "api"
+            "regiao", request.regiao()     // "sul", "sudeste", "norte"
+        ).increment();
+
+        // Log estruturado — mesmo evento, contexto complementar ao counter
+        LogSistematico
+            .registrando("Pedido criado")
+            .em(PedidoService.class, "criar")
+            .porque("Solicitação do cliente via checkout")
+            .comDetalhe("eventType", "ORDER_CREATED")
+            .comDetalhe("pedidoId",  pedido.getId())
+            .info();
+
+        return pedido;
+    }
+}
+```
+
+Queries PromQL para o counter de negócio:
+
+```promql
+# Taxa de pedidos criados por segundo — últimos 5 minutos
+rate(pedido_criado_total[5m])
+
+# Distribuição por canal
+sum by (canal) (rate(pedido_criado_total[5m]))
+
+# Comparação entre regiões nas últimas 24h
+sum by (regiao) (increase(pedido_criado_total[24h]))
+```
+
+---
+
 #### 22.2. Timer Manual — Operações sem `@Logged`
 
+Para operações que não usam `@Logged` mas cujo comportamento de latência é crítico para o negócio — integrações externas, processamento de lote, chamadas a APIs parceiras — o Timer manual com `Timer.start()` / `sample.stop()` é o padrão correto.
+
+O `Timer.start()` captura o instante de início antes de qualquer código do fluxo; o `sample.stop()` registra a duração e associa o resultado (sucesso/falha) via tags — permitindo análise separada de latência por resultado:
+
+```java
+public NotaFiscal emitirNotaFiscal(Pedido pedido) {
+    // Captura o instante de início — antes de qualquer I/O
+    var sample = Timer.start(meterRegistry);
+
+    try {
+        var nota = apiSefaz.emitir(pedido);
+
+        // Para o timer com tag de resultado — sucesso
+        sample.stop(Timer.builder("nota.fiscal.emissao")
+            .tag("resultado", "sucesso")
+            .publishPercentileHistogram()
+            .register(meterRegistry));
+
+        return nota;
+
+    } catch (SefazException e) {
+        // Para o timer com tags de resultado e código de erro
+        sample.stop(Timer.builder("nota.fiscal.emissao")
+            .tag("resultado", "falha")
+            .tag("codigo",    e.getCodigo())    // "rejeicao_534", "timeout", "indisponivel"
+            .publishPercentileHistogram()
+            .register(meterRegistry));
+        throw e;
+    }
+}
+```
+
+Queries PromQL:
+
+```promql
+# p99 de latência de emissão de NF — apenas requisições bem-sucedidas
+histogram_quantile(0.99,
+    rate(nota_fiscal_emissao_seconds_bucket{resultado="sucesso"}[5m])
+)
+
+# Taxa de falha por código de erro — últimos 10 minutos
+sum by (codigo) (rate(nota_fiscal_emissao_seconds_count{resultado="falha"}[10m]))
+```
+
+---
+
 #### 22.3. Anotações Declarativas: `@Timed`, `@Counted`
+
+Para casos onde a instrumentação via construtor é verbosa e o método não usa `@Logged`, o Micrometer oferece anotações declarativas ativadas por interceptor CDI. O Quarkus suporta `@Timed` e `@Counted` nativamente com `quarkus-micrometer`:
+
+```java
+@ApplicationScoped
+public class RelatorioService {
+
+    // Timer automático — equivalente a LogInterceptor.metodo.execucao
+    // mas com nome e descrição customizados
+    @Timed(
+        value       = "relatorio.geracao",
+        extraTags   = {"tipo", "vendas"},
+        histogram   = true,
+        description = "Tempo de geração de relatório de vendas"
+    )
+    public Relatorio gerarVendas(Periodo periodo) {
+        // ...
+    }
+
+    // Counter automático — incrementado a cada invocação
+    @Counted(
+        value     = "relatorio.solicitacoes",
+        extraTags = {"tipo", "estoque"}
+    )
+    public Relatorio gerarEstoque(Periodo periodo) {
+        // ...
+    }
+}
+```
+
+**`@Timed` vs. `@Logged`:** quando o método já tem `@Logged`, o Timer `metodo.execucao` já é emitido automaticamente — não usar `@Timed` no mesmo método para evitar duplicação de métricas. Use `@Timed` apenas em métodos sem `@Logged` onde o nome customizado da métrica é importante para dashboards ou alertas existentes.
 
 ---
 
 ### 23. Padrões de Gauge
 
+O Gauge é o único medidor que *observa* um valor externo em vez de acumulá-lo. O Micrometer *puxa* o valor do objeto observado a cada scrape ou ciclo de exportação — o código de instrumentação não "empurra" valores.
+
+> **Armadilha crítica — referência fraca:** o Micrometer mantém apenas referência **fraca** ao objeto observado. Se nenhuma outra parte do código mantiver uma referência forte ao objeto, o GC pode coletá-lo e o Gauge passa a retornar `NaN` silenciosamente — sem exceção, sem log, sem alerta. **Sempre garanta que o bean CDI ou campo da classe mantenha a referência forte ao objeto instrumentado.**
+
+---
+
 #### 23.1. Padrão 1 — Observador de Coleção (`gaugeCollectionSize`)
+
+Use quando o estado a observar já é uma coleção ou mapa Java gerenciado pelo próprio bean. O `MeterRegistry` oferece atalhos de conveniência que registram o Gauge e retornam a própria coleção instrumentada:
+
+```java
+@ApplicationScoped
+public class FilaProcessamento {
+
+    // Referência forte mantida pelo bean — necessária contra coleta pelo GC
+    private final List<Pedido>           pendentes;
+    private final Map<String, Pedido>    emProcessamento;
+
+    public FilaProcessamento(MeterRegistry meterRegistry) {
+
+        // gaugeCollectionSize: registra Gauge que lê Collection::size a cada scrape
+        this.pendentes = meterRegistry.gaugeCollectionSize(
+            "fila.pedidos.pendentes",
+            Tags.of("etapa", "entrada"),
+            new ArrayList<>()
+        );
+
+        // gaugeMapSize: equivalente para Map
+        this.emProcessamento = meterRegistry.gaugeMapSize(
+            "fila.pedidos.processando",
+            Tags.of("etapa", "execucao"),
+            new ConcurrentHashMap<>()
+        );
+    }
+
+    public void enfileirar(Pedido pedido)          { pendentes.add(pedido); }
+    public void iniciarProcessamento(Pedido pedido) {
+        pendentes.remove(pedido);
+        emProcessamento.put(pedido.getId(), pedido);
+    }
+    public void concluir(Pedido pedido)            { emProcessamento.remove(pedido.getId()); }
+}
+```
+
+---
 
 #### 23.2. Padrão 2 — Observador de Objeto (`Gauge.builder` + `ToDoubleFunction`)
 
+Use quando o estado a observar é um objeto de domínio ou de infraestrutura que expõe getters numéricos. Um mesmo objeto pode ser observado por múltiplos Gauges, cada um extraindo uma propriedade diferente:
+
+```java
+@ApplicationScoped
+public class CacheMetricas {
+
+    // Referência forte ao cache — necessária porque o Gauge usa referência fraca
+    private final Cache<String, Produto> cache;
+
+    public CacheMetricas(Cache<String, Produto> cache, MeterRegistry meterRegistry) {
+        this.cache = cache;
+
+        Gauge.builder("cache.produtos.tamanho", cache, Cache::estimatedSize)
+            .description("Número estimado de entradas no cache de produtos")
+            .register(meterRegistry);
+
+        Gauge.builder("cache.produtos.hit.rate", cache, c -> c.stats().hitRate())
+            .description("Taxa de acerto do cache (proporção de hits sobre total de acessos)")
+            .register(meterRegistry);
+
+        Gauge.builder("cache.produtos.evicoes", cache, c -> c.stats().evictionCount())
+            .description("Total de entradas removidas por evicção desde a inicialização")
+            .register(meterRegistry);
+    }
+}
+```
+
+---
+
 #### 23.3. Padrão 3 — Imperativo (`AtomicLong`)
+
+Use quando o valor do Gauge é calculado por código de negócio em momentos específicos — não é derivado diretamente de uma estrutura em memória, mas de uma query ao banco ou cálculo periódico. O `AtomicLong` atua como suporte (*backing store*) do Gauge:
+
+```java
+@ApplicationScoped
+public class PedidoEstadoMetricas {
+
+    // AtomicLong como suporte — referência forte garantida pelo bean @ApplicationScoped
+    private final AtomicLong pedidosPendentes  = new AtomicLong(0);
+    private final AtomicLong pedidosEmAnalise  = new AtomicLong(0);
+    private final AtomicLong pedidosBloqueados = new AtomicLong(0);
+
+    public PedidoEstadoMetricas(MeterRegistry meterRegistry) {
+
+        Gauge.builder("pedidos.por.estado", pedidosPendentes, AtomicLong::get)
+            .tag("estado", "PENDENTE")
+            .description("Pedidos atualmente no estado PENDENTE")
+            .register(meterRegistry);
+
+        Gauge.builder("pedidos.por.estado", pedidosEmAnalise, AtomicLong::get)
+            .tag("estado", "EM_ANALISE")
+            .description("Pedidos atualmente em análise de fraude")
+            .register(meterRegistry);
+
+        Gauge.builder("pedidos.por.estado", pedidosBloqueados, AtomicLong::get)
+            .tag("estado", "BLOQUEADO")
+            .description("Pedidos bloqueados aguardando revisão manual")
+            .register(meterRegistry);
+    }
+
+    // Chamado pelo job @Scheduled ou após eventos de mudança de estado
+    public void sincronizarContadores(Map<String, Long> contagensPorEstado) {
+        pedidosPendentes.set(contagensPorEstado.getOrDefault("PENDENTE",   0L));
+        pedidosEmAnalise.set(contagensPorEstado.getOrDefault("EM_ANALISE", 0L));
+        pedidosBloqueados.set(contagensPorEstado.getOrDefault("BLOQUEADO", 0L));
+    }
+}
+```
+
+> **Por que não usar Counter aqui:** contagens de entidades em estado específico *podem diminuir* — pedidos saem de `PENDENTE` quando processados. Counter é monotônico por definição. O Gauge com `AtomicLong` é o instrumento correto para estados que oscilam.
+
+---
 
 #### 23.4. Padrão 4 — Múltiplas Dimensões Dinâmicas (`MultiGauge`)
 
+Use quando o mesmo fenômeno precisa ser reportado para vários conjuntos de tags ao mesmo tempo e esses conjuntos são dinâmicos — surgem ou desaparecem com o tempo. O `MultiGauge` gerencia internamente o conjunto de séries temporais e remove séries cujos estados desapareceram com `overwrite=true`:
+
+```java
+@ApplicationScoped
+public class PedidoEstadoMultiMetricas {
+
+    private final MultiGauge pedidosPorEstado;
+
+    public PedidoEstadoMultiMetricas(MeterRegistry meterRegistry) {
+        this.pedidosPorEstado = MultiGauge.builder("pedidos.por.estado")
+            .description("Pedidos agrupados por estado atual")
+            .register(meterRegistry);
+    }
+
+    // Chamado por @Scheduled com o resultado de:
+    // SELECT estado, COUNT(*) FROM pedidos GROUP BY estado
+    public void atualizar(Map<String, Long> contagensPorEstado) {
+        var rows = contagensPorEstado.entrySet().stream()
+            .map(e -> MultiGauge.Row.of(Tags.of("estado", e.getKey()), e.getValue()))
+            .toList();
+
+        // overwrite=true: remove séries de estados que sumiram do resultado
+        pedidosPorEstado.register(rows, true);
+    }
+}
+```
+
+```promql
+# Pedidos em estado PENDENTE agora
+pedidos_por_estado{estado="PENDENTE"}
+
+# Distribuição total de backlog por estado
+sum by (estado) (pedidos_por_estado)
+```
+
+> **`MultiGauge` vs. múltiplos `Gauge.builder`:** prefira `MultiGauge` quando as dimensões são dinâmicas. Para dimensões estáticas e conhecidas em tempo de compilação, múltiplos `Gauge.builder` com `AtomicLong` são mais simples e explícitos.
+
+---
+
 #### 23.5. Padrão 5 — Duração desde Evento (`TimeGauge`)
+
+Use quando o valor a observar é uma duração — tempo desde o último heartbeat, idade da mensagem mais antiga em fila, tempo desde o último backup bem-sucedido. O `TimeGauge` realiza a conversão de unidade automaticamente, tornando o código agnóstico ao backend:
+
+```java
+@ApplicationScoped
+public class HeartbeatMetricas {
+
+    // Referência forte — necessária porque TimeGauge usa referência fraca
+    private final AtomicLong ultimoHeartbeatEpoch;
+
+    public HeartbeatMetricas(MeterRegistry meterRegistry) {
+        this.ultimoHeartbeatEpoch = new AtomicLong(System.currentTimeMillis());
+
+        TimeGauge.builder(
+                "heartbeat.ultima.ha",
+                ultimoHeartbeatEpoch,
+                TimeUnit.MILLISECONDS,
+                epoch -> System.currentTimeMillis() - epoch.get()
+            )
+            .description("Tempo decorrido desde o último heartbeat bem-sucedido")
+            .register(meterRegistry);
+    }
+
+    public void registrarHeartbeat() {
+        ultimoHeartbeatEpoch.set(System.currentTimeMillis());
+    }
+}
+```
+
+```promql
+# Alerta se o heartbeat não ocorre há mais de 60 segundos
+heartbeat_ultima_ha_seconds > 60
+```
+
+> **`TimeGauge` vs. Gauge com milissegundos hard-coded:** use sempre `TimeGauge` para durações. Prometheus espera segundos; um Gauge que exponha milissegundos diretamente produz alertas e dashboards com escala errada.
+
+---
+
+**Resumo dos cinco padrões:**
+
+| Padrão | Mecanismo | Quando usar |
+|---|---|---|
+| **Observador de coleção** | `gaugeCollectionSize` / `gaugeMapSize` | Coleção/mapa é o estado canônico do bean |
+| **Observador de objeto** | `Gauge.builder` + `ToDoubleFunction` | Objeto expõe getter numérico — cache, pool, executor |
+| **Imperativo** | `Gauge.builder` + `AtomicLong` | Valor calculado periodicamente por código |
+| **Dimensões dinâmicas** | `MultiGauge` + `Row.of(Tags, valor)` | Estados que surgem e somem com o tempo |
+| **Duração desde evento** | `TimeGauge` + `ToDoubleFunction` | Tempo decorrido — heartbeat, idade de mensagem |
 
 ---
 
@@ -1439,25 +3249,397 @@ LogContextoFiltro.filter(response)    ← MDC: limpo completamente (MDC.clear())
 
 #### 24.1. White-box vs. Black-box Monitoring
 
-#### 24.2. Estrutura: Domínio Sem Acoplamento a Métricas
+O Monitor Externo responde a uma tensão real em sistemas instrumentados: **objetos de domínio de negócio não deveriam carregar referências ao sistema de observabilidade**.
 
-#### 24.3. Monitor com Estado em Memória
+Um `PedidoService` que injeta `MeterRegistry` apenas para emitir Gauges de estado mistura duas responsabilidades com razões de mudança distintas — a lógica de processamento de pedidos e a estratégia de observabilidade. Se o time de plataforma decide mudar as tags de uma métrica ou adicionar um novo Gauge, o objeto de domínio precisa ser alterado.
 
-#### 24.4. Monitor com Estado Calculado Periodicamente (`@Scheduled`)
+A distinção vem do *SRE Book* (Beyer et al., cap. 10):
 
-#### 24.5. Exemplars: Ligação Direta Métrica → Trace
+| Estratégia | O objeto instrumentado... | Acoplamento | Adequado para |
+|---|---|---|---|
+| **White-box** | emite suas próprias métricas — chama `meterRegistry` diretamente | Alto | Infraestrutura técnica: pool, cache, executor, fila técnica |
+| **Black-box (Monitor Externo)** | expõe apenas estado via getters — não sabe que está sendo observado | Zero | Domínio de negócio: `PedidoService`, `PagamentoService` |
+
+**Regra prática:** se o objeto pertence ao domínio de negócio, use Monitor Externo. Se pertence à camada de infraestrutura ou utilitários técnicos, white-box é aceitável.
 
 ---
 
+#### 24.2. Estrutura: Domínio Sem Acoplamento a Métricas
+
+```
+ObjetoDeDomínio    — lógica de negócio, estado, zero referência a métricas
+MonitorExterno     — observabilidade, zero lógica de negócio
+MeterRegistry      — infraestrutura, zero conhecimento dos dois acima
+```
+
+O objeto de domínio expõe apenas o estado que naturalmente já exporia — getters que fazem sentido para a lógica de negócio, independentemente de qualquer observabilidade:
+
+```java
+// Objeto de domínio — zero conhecimento de métricas
+@ApplicationScoped
+public class PedidoService {
+
+    private final ConcurrentLinkedDeque<Pedido> aguardandoPagamento = new ConcurrentLinkedDeque<>();
+    private final ConcurrentLinkedDeque<Pedido> aguardandoEstoque   = new ConcurrentLinkedDeque<>();
+    private final AtomicLong                    totalRecusados      = new AtomicLong(0);
+
+    private final PedidoRepository repository;
+
+    public PedidoService(PedidoRepository repository) {
+        this.repository = repository;
+    }
+
+    public Pedido criar(NovoPedidoRequest request) {
+        var pedido = repository.salvar(new Pedido(request));
+        aguardandoPagamento.addLast(pedido);
+        return pedido;
+    }
+
+    public void confirmarPagamento(Pedido pedido) {
+        aguardandoPagamento.remove(pedido);
+        aguardandoEstoque.addLast(pedido);
+    }
+
+    public void recusar(Pedido pedido, String motivo) {
+        aguardandoPagamento.remove(pedido);
+        totalRecusados.incrementAndGet();
+    }
+
+    public void despachar(Pedido pedido) {
+        aguardandoEstoque.remove(pedido);
+    }
+
+    // Getters de estado — existem para o negócio, não para métricas
+    public int  qtdAguardandoPagamento() { return aguardandoPagamento.size(); }
+    public int  qtdAguardandoEstoque()   { return aguardandoEstoque.size(); }
+    public long totalPedidosRecusados()  { return totalRecusados.get(); }
+}
+```
+
+---
+
+#### 24.3. Monitor com Estado em Memória
+
+O monitor é um bean separado, sem nenhuma lógica de negócio. Sua única responsabilidade é conectar o estado do objeto de domínio ao `MeterRegistry`:
+
+```java
+// Monitor Externo — observabilidade pura, zero lógica de negócio
+@ApplicationScoped
+public class PedidoServiceMonitor {
+
+    // Referência forte ao objeto monitorado — necessária porque Gauge usa referência fraca
+    private final PedidoService pedidoService;
+
+    public PedidoServiceMonitor(PedidoService pedidoService,
+                                MeterRegistry meterRegistry) {
+        this.pedidoService = pedidoService;
+
+        Gauge.builder("pedido.estado.aguardando_pagamento", pedidoService,
+                      s -> s.qtdAguardandoPagamento())
+            .description("Pedidos confirmados aguardando aprovação de pagamento")
+            .register(meterRegistry);
+
+        Gauge.builder("pedido.estado.aguardando_estoque", pedidoService,
+                      s -> s.qtdAguardandoEstoque())
+            .description("Pedidos com pagamento aprovado aguardando reserva de estoque")
+            .register(meterRegistry);
+
+        Gauge.builder("pedido.recusados.total", pedidoService,
+                      s -> s.totalPedidosRecusados())
+            .description("Total acumulado de pedidos recusados desde a inicialização")
+            .register(meterRegistry);
+    }
+}
+```
+
+O `PedidoService` permanece idêntico com ou sem observabilidade. Para adicionar um novo Gauge, alterar tags ou remover uma métrica, somente o `PedidoServiceMonitor` é tocado.
+
+**Convenção de nomenclatura:**
+
+| Objeto monitorado | Monitor externo |
+|---|---|
+| `PedidoService` | `PedidoServiceMonitor` |
+| `FilaProcessamento` | `FilaProcessamentoMonitor` |
+| `EstoqueService` | `EstoqueServiceMonitor` |
+
+---
+
+#### 24.4. Monitor com Estado Calculado Periodicamente (`@Scheduled`)
+
+Quando o estado a observar não está em memória mas em uma fonte externa — banco de dados, API, cache distribuído — o Monitor Externo combina com um job `@Scheduled`. O monitor mantém `AtomicLong` como suporte e os atualiza a partir da fonte externa:
+
+```java
+@ApplicationScoped
+public class PedidoEstadoBancoDadosMonitor {
+
+    private final AtomicLong pedidosPendentes  = new AtomicLong(0);
+    private final AtomicLong pedidosBloqueados = new AtomicLong(0);
+
+    private final PedidoRepository repository;
+
+    public PedidoEstadoBancoDadosMonitor(PedidoRepository repository,
+                                          MeterRegistry meterRegistry) {
+        this.repository = repository;
+
+        Gauge.builder("pedido.estado.pendente", pedidosPendentes, AtomicLong::get)
+            .description("Pedidos no estado PENDENTE — atualizado a cada 30s")
+            .register(meterRegistry);
+
+        Gauge.builder("pedido.estado.bloqueado", pedidosBloqueados, AtomicLong::get)
+            .description("Pedidos BLOQUEADOS aguardando revisão manual")
+            .register(meterRegistry);
+    }
+
+    @Scheduled(every = "30s")
+    void sincronizar() {
+        try {
+            // SELECT estado, COUNT(*) FROM pedidos GROUP BY estado
+            var contagens = repository.contarPorEstado();
+            pedidosPendentes.set(contagens.getOrDefault("PENDENTE",   0L));
+            pedidosBloqueados.set(contagens.getOrDefault("BLOQUEADO", 0L));
+        } catch (Exception e) {
+            // Falha do monitor não afeta o negócio — Gauge mantém último valor conhecido
+            log.warn("Falha ao sincronizar métricas de estado de pedidos: {}", e.getMessage());
+        }
+    }
+}
+```
+
+> **Separação de responsabilidades no `@Scheduled`:** o job de sincronização pertence ao monitor, não ao repositório nem ao service. O repositório executa a query; o monitor decide quando executá-la e como mapear o resultado para métricas.
+
+---
+
+#### 24.5. Exemplars: Ligação Direta Métrica → Trace
+
+Exemplars são amostras de observações do Timer ou Histogram que carregam o `traceId` da requisição que gerou aquela amostra. Quando o Grafana exibe um histograma de latência, cada barra pode ter um link direto para o trace que causou aquela latência — sem precisar abrir o Jaeger e filtrar manualmente por janela de tempo.
+
+**Como funcionam:** o Micrometer detecta o span OTel ativo no momento do `sample.stop()` e injeta automaticamente o `traceId` e `spanId` na amostra do histograma. O endpoint `/q/metrics` no formato OpenMetrics expõe esses campos junto com o valor:
+
+```
+metodo_execucao_seconds_bucket{
+    classe="PagamentoService",
+    metodo="processar",
+    le="0.5"
+} 142 # {trace_id="4bf92f3577b34da6a3ce929d0e0e4736",span_id="a3ce929d0e0e4736"} 0.432
+```
+
+O Grafana lê o `trace_id` do exemplar e renderiza um link direto para o Grafana Tempo — navegação métrica → trace em um clique, sem filtro manual por janela de tempo.
+
+**Habilitação:**
+
+```properties
+# Habilita formato OpenMetrics no endpoint /q/metrics — necessário para exemplars
+quarkus.micrometer.export.prometheus.histogram-flavor=openmetrics_text
+```
+
+Os exemplars são gerados automaticamente quando:
+- `quarkus-opentelemetry` está ativo — span OTel presente no contexto
+- `publishPercentileHistogram()` está habilitado no Timer ou Distribution Summary
+- O endpoint Prometheus usa o formato OpenMetrics (`histogram-flavor=openmetrics_text`)
+
+Nenhuma alteração no código de instrumentação é necessária. O `LogInterceptor` já usa `publishPercentileHistogram()` no Timer `metodo.execucao` — Exemplars são habilitados automaticamente com a propriedade acima.
+
+**Fluxo com Exemplars:**
+
+```
+Grafana — histograma metodo_execucao_seconds
+        │
+        │  barra do p99 tem Exemplar com trace_id
+        │
+        ▼  (clique no Exemplar)
+Grafana Tempo — trace completo da requisição com maior latência
+        │
+        │  span PagamentoService.processar tem status ERROR
+        │
+        ▼  (link para logs via traceId)
+Grafana Loki — logs da requisição com contexto completo
+               userId, pedidoId, código de gateway, stack trace
+```
+
+Esta é a correlação completa entre os três pilares — de um pico de latência no dashboard até o contexto exato da falha nos logs — sem nenhuma query manual intermediária.
+
+---
 ## Parte VI — Correlação entre Pilares e Diagnóstico
 
 ### 25. Fluxo de Investigação de Incidente
 
 #### 25.1. Alerta → Trace → Log: Navegação entre os Três Pilares
 
+A correlação entre métricas, traces e logs não é apenas uma boa prática de observabilidade — é o que torna possível reduzir o MTTR (*Mean Time to Repair*) de horas para minutos em sistemas distribuídos. A Charity Majors (Observability Engineering, cap. 2) define esse objetivo com precisão: um sistema observável deve permitir que um engenheiro que nunca viu aquele código antes consiga diagnosticar uma falha nova usando apenas os dados já coletados, sem adicionar instrumentação nova em produção.
+
+O `traceId` é a chave que torna essa navegação possível. Presente em cada linha de log e em cada span, ele conecta os três pilares em uma única operação de investigação — sem correlação manual por timestamp, sem varredura de logs de múltiplos serviços, sem depender de quem escreveu o código.
+
+O fluxo canônico de investigação:
+
+```
+1. ALERTA DISPARA  (Prometheus / Grafana)
+   └─ métrica: rate(metodo_falha_total{
+                   classe="PagamentoService",
+                   metodo="processar",
+                   excecao="GatewayException"
+               }[5m]) > 0.05
+   └─ interpretação: mais de 5% das invocações de
+      PagamentoService.processar falham com GatewayException
+
+2. ANÁLISE DE TENDÊNCIA  (Grafana)
+   └─ histograma: p99 de latência subiu de 200ms para 2s nas últimas 2h
+   └─ counter por exceção: GatewayException concentra 80% das falhas
+   └─ correlação com deploy? com horário? com volume de tráfego?
+
+3. LOCALIZAÇÃO DO COMPONENTE  (Jaeger / Grafana Tempo)
+   └─ busca: serviço="pagamentos-service", status=ERROR,
+             janela de tempo do alerta
+   └─ grafo de spans do trace mais lento:
+        POST /pagamentos                     [0ms ──────────────────── 2100ms]
+          └─ PagamentoService.processar      [5ms ──────────────── 2090ms]
+               └─ GatewayClient.cobrar       [10ms ─────────────── 2080ms]  ← gargalo
+   └─ conclusão: GatewayClient.cobrar leva 2070ms dos 2100ms totais
+
+4. DIAGNÓSTICO DETALHADO  (Kibana / Grafana Loki)
+   └─ filtro: traceId="4bf92f3577b34da6a3ce929d0e0e4736"
+   └─ logs de todos os serviços da requisição, em ordem cronológica:
+
+      14:32:01.001  pedidos-service       INFO   "Pedido recebido"
+                    detalhe_pedidoId: "9912", userId: "joao.silva@empresa.com"
+
+      14:32:01.010  pagamentos-service    INFO   "Iniciando processamento de pagamento"
+                    detalhe_ordemId: "9912", detalhe_gateway: "Cielo"
+
+      14:32:03.088  pagamentos-service    ERROR  "Falha ao processar pagamento"
+                    log_motivo: "Gateway não respondeu dentro do timeout"
+                    detalhe_errorCode: "PAG-4022"
+                    detalhe_timeoutMs: "2000"
+                    stack_trace: "GatewayTimeoutException: connection timeout..."
+
+      14:32:03.090  pedidos-service       ERROR  "Erro ao confirmar pagamento"
+                    log_motivo: "Serviço de pagamento retornou falha"
+                    detalhe_pedidoId: "9912"
+
+5. AÇÃO DE REMEDIAÇÃO
+   └─ errorCode PAG-4022 → consulta KEDB →
+      runbook: "Gateway Cielo com timeout elevado — verificar status da integração"
+   └─ rollback de configuração de timeout ou escalação para o time de integração
+```
+
+Cada etapa desse fluxo é viabilizada por um pilar diferente. A remoção de qualquer um dos três aumenta o tempo e o esforço de investigação proporcionalmente.
+
+---
+
 #### 25.2. `traceId` como Chave de Correlação Universal
 
+O `traceId` opera como chave de correlação universal porque está presente simultaneamente em três lugares:
+
+**Em cada linha de log** — via MDC, injetado automaticamente pelo `GerenciadorContextoLog`:
+
+```json
+{
+  "timestamp":       "2026-03-11T21:55:00.123Z",
+  "level":           "ERROR",
+  "message":         "Falha ao processar pagamento",
+  "traceId":         "4bf92f3577b34da6a3ce929d0e0e4736",
+  "spanId":          "a3ce929d0e0e4736",
+  "userId":          "joao.silva@empresa.com",
+  "applicationName": "pagamentos-service",
+  "log_motivo":      "Gateway não respondeu dentro do timeout",
+  "detalhe_errorCode": "PAG-4022"
+}
+```
+
+**Em cada span** — como `trace_id` no cabeçalho do protocolo OTel, visível na UI do Jaeger e Grafana Tempo.
+
+**Em exemplars de métricas** — quando `publishPercentileHistogram()` e `histogram-flavor=openmetrics_text` estão ativos, o histograma do Timer carrega o `traceId` da amostra mais recente em cada bucket:
+
+```
+metodo_execucao_seconds_bucket{
+    classe="PagamentoService", metodo="processar", le="2.5"
+} 87 # {trace_id="4bf92f3577b34da6a3ce929d0e0e4736"} 2.073
+```
+
+Essa tripla presença é o que torna possível a navegação em qualquer direção:
+
+| Ponto de partida | Ferramenta | Navegação |
+|---|---|---|
+| Alerta de métrica | Grafana | Exemplar do histograma → `traceId` → Grafana Tempo |
+| Trace com status ERROR | Jaeger / Grafana Tempo | `traceId` → filtro em Kibana/Loki |
+| Log com `level: ERROR` | Kibana / Grafana Loki | `traceId` → busca no Jaeger/Grafana Tempo |
+
+**`traceId` ausente nos logs** é o sintoma mais direto de que a correlação está quebrada. As causas mais comuns em Quarkus:
+
+| Causa | Sintoma | Solução |
+|---|---|---|
+| `quarkus-opentelemetry` não instalado | `traceId` sempre vazio | Adicionar dependência Maven |
+| `LogContextoFiltro` não ativo | `traceId` ausente em todos os logs | Verificar registro como `@Provider` |
+| Contexto reativo sem `context-propagation` | `traceId` presente no início, vazio em continuations | Adicionar `quarkus-smallrye-context-propagation` (seção 7) |
+| `traceId` gerado manualmente via UUID | `traceId` presente mas não correlaciona com nenhum span | Remover — ler de `Span.current()` (padrão proibido P6) |
+
+---
+
 #### 25.3. Diagrama de Fluxo: Requisição com `@Logged` + `@Rastreado`
+
+O diagrama abaixo ilustra o ciclo de vida completo de uma requisição com `@Logged` e `@Rastreado` aplicados — da entrada HTTP até a geração dos três sinais de telemetria:
+
+```
+Requisição HTTP: POST /pagamentos
+        │
+        ▼
+JAX-RS (quarkus-opentelemetry auto-instrumenta)
+  ├─ Root Span criado: "POST /pagamentos"
+  ├─ traceId: "4bf9..."  spanId: "a1b2..." injetados no MDC
+  └─ LogContextoFiltro.filter() — inicializa MDC: userId, applicationName
+        │
+        ▼
+RastreamentoInterceptor (@Priority APPLICATION-10)
+  ├─ Child Span criado: "PagamentoService.processar"  spanId: "c3d4..."
+  ├─ MDC atualizado: spanId ← "c3d4..."
+  └─ Pipeline de enriquecimento executado
+        │
+        ▼
+LogInterceptor (@Priority APPLICATION)
+  ├─ MDC: classe="PagamentoService", metodo="processar"
+  ├─ Timer iniciado: metodo_execucao_seconds
+  └─ método de negócio executa
+        │
+        ├─ LogSistematico emite log de negócio:
+        │    JSON: traceId="4bf9...", spanId="c3d4...",
+        │          userId, applicationName, log_motivo, detalhe_*
+        │
+        ├─ [se exceção]
+        │    ├─ GerenciadorRastreamento.marcarErro(): span.setStatus(ERROR)
+        │    │   span.recordException(e)   ← evento de span com stack trace
+        │    └─ LogInterceptor: counter metodo_falha_total incrementado
+        │
+        ▼
+LogInterceptor.finally()
+  ├─ Timer parado: metodo_execucao_seconds registrado com histograma
+  │   └─ Exemplar: trace_id="4bf9..." injetado automaticamente no bucket
+  └─ MDC: classe e metodo removidos
+        │
+        ▼
+RastreamentoInterceptor.finally()
+  ├─ scope.close()  — span pai restaurado como corrente
+  ├─ span.end()     — Child Span encerrado, exportado via OTLP
+  └─ MDC: spanId restaurado ao valor do Root Span ("a1b2...")
+        │
+        ▼
+LogContextoFiltro.filter() (fase de resposta)
+  └─ MDC.clear()  — limpeza garantida, previne context leak
+
+─────────────────────────────────────────────────────────
+
+Sinais gerados por essa única requisição:
+
+LOGS (Kibana / Grafana Loki)
+  └─ JSON com traceId + spanId + userId + log_motivo + detalhe_* + stack_trace
+
+TRACE (Jaeger / Grafana Tempo)
+  └─ Árvore: "POST /pagamentos" → "PagamentoService.processar"
+     └─ Atributos: service.name, code.namespace, code.function, enduser.id
+     └─ Evento: exception (type, message, stacktrace)
+
+MÉTRICAS (Prometheus / Grafana)
+  └─ metodo_execucao_seconds{classe, metodo} — Timer com histograma + Exemplar
+  └─ metodo_falha_total{classe, metodo, excecao} — Counter (se houve exceção)
+```
 
 ---
 
@@ -1465,51 +3647,417 @@ LogContextoFiltro.filter(response)    ← MDC: limpo completamente (MDC.clear())
 
 #### 26.1. Log Aggregation
 
-#### 26.2. API Gateway como Ponto de Criação do Root Span
+**Referência:** Chris Richardson — [Application Logging (microservices.io)](https://microservices.io/patterns/observability/application-logging.html); Iluwatar — [microservices-log-aggregation](https://github.com/iluwatar/java-design-patterns/tree/master/microservices-log-aggregation)
 
-#### 26.3. Circuit Breaker e Métricas de Estado
+O rastreamento distribuído tem valor limitado quando os logs de cada serviço são inspecionados individualmente. A correlação via `traceId` só é possível quando todos os logs estão em um sistema centralizado, pesquisável com um único filtro.
 
-#### 26.4. Saga e Rastreabilidade de Transações Distribuídas
+O padrão Log Aggregation define que cada instância de serviço escreve logs em stdout (não em arquivo) e um agente de coleta centraliza esses logs em um repositório único. Em OKD, o pipeline padrão é:
+
+```
+Aplicação → stdout (JSON)
+         → FluentBit (DaemonSet no OKD)
+         → Loki / Elasticsearch
+         → Grafana / Kibana (query por traceId, userId, applicationName)
+```
+
+**Relação com a biblioteca:** a saída JSON via `quarkus.log.console.json=true` e a ausência de escrita em arquivo são os dois requisitos que tornam a aplicação compatível com o padrão Log Aggregation sem configuração adicional. O `LogContextoFiltro` garante que cada linha de log carregue os campos de correlação que tornam a agregação útil.
+
+**O que o FluentBit adiciona:** campos de infraestrutura enriquecidos automaticamente pelo agente de coleta — ausentes na aplicação por design:
+
+| Campo | Fonte | Uso |
+|---|---|---|
+| `kubernetes.pod.name` | Metadata da API do Kubernetes | Identificar qual pod processou a requisição |
+| `kubernetes.namespace` | Metadata da API do Kubernetes | Separar logs por ambiente (dev/staging/prod) em multi-tenant |
+| `container.id` | Runtime do container | Correlacionar com métricas de container do Prometheus |
+
+Esses campos não devem ser emitidos pela aplicação — são responsabilidade da plataforma. A posição da biblioteca é que transformação para convenções de infraestrutura (ECS do Elasticsearch, campos `dd.*` do Datadog) é responsabilidade do coletor, não da aplicação.
 
 ---
 
+#### 26.2. API Gateway como Ponto de Criação do Root Span
+
+**Referência:** Cindy Sridharan — *Distributed Systems Observability* (cap. 4)
+
+O API Gateway — ponto de entrada único do sistema para requisições externas — é o local natural para criação do Root Span de cada requisição. Quando instrumentado com OTel, o Gateway injeta o cabeçalho `traceparent` antes de rotear a requisição para os serviços internos. Cada serviço, ao receber o cabeçalho, extrai o `traceId` e cria Child Spans vinculados ao trace existente — sem criar traces órfãos.
+
+```
+Cliente externo
+      │  HTTP (sem traceparent)
+      ▼
+API Gateway (OTel instrumentado)
+      ├─ Root Span criado: "GET /api/pedidos/{id}"
+      ├─ traceId: "4bf9..." gerado aqui
+      │  HTTP (com traceparent: 00-4bf9...-a1b2...-01)
+      ▼
+pedidos-service → pagamentos-service → estoque-service
+  (todos criam Child Spans vinculados ao traceId "4bf9...")
+```
+
+**Consequência da ausência de instrumentação no Gateway:** sem `traceparent` injetado pelo Gateway, cada serviço que recebe a requisição cria um Root Span próprio com `traceId` diferente. Não há fio condutor entre os serviços — o rastreamento distribuído existe apenas dentro de cada serviço individualmente, não entre serviços.
+
+**Em OKD:** o Red Hat OpenShift Service Mesh (baseado em Istio) pode instrumentar o Gateway automaticamente via sidecar Envoy com OTel, sem alteração no código do Gateway. O `traceId` é gerado no Envoy e propagado para todos os serviços internos via `traceparent`.
+
+---
+
+#### 26.3. Circuit Breaker e Métricas de Estado
+
+**Referência:** Michael Nygard — *Release It!* (Pragmatic Bookshelf); Beyer et al. — *SRE Book*, cap. 22
+
+O Circuit Breaker é um mecanismo de resiliência que interrompe chamadas a um serviço que está falhando consistentemente, retornando imediatamente um fallback em vez de acumular timeouts. Do ponto de vista de observabilidade, o Circuit Breaker introduz dois comportamentos que precisam ser monitorados:
+
+**Estado do disjuntor como Gauge:** o estado do Circuit Breaker — `CLOSED` (operação normal), `OPEN` (chamadas bloqueadas), `HALF_OPEN` (testando recuperação) — deve ser exposto como Gauge. Uma transição para `OPEN` é um evento de negócio crítico que deve disparar alerta imediatamente.
+
+```java
+// Exemplo com Resilience4j + Micrometer (integração nativa no Quarkus)
+// O TaggedCircuitBreakerMetrics registra automaticamente:
+//   resilience4j_circuitbreaker_state{name, state}
+//   resilience4j_circuitbreaker_calls_total{name, kind}  — success, failed, not_permitted
+//   resilience4j_circuitbreaker_failure_rate{name}
+TaggedCircuitBreakerMetrics
+    .ofCircuitBreakerRegistry(circuitBreakerRegistry)
+    .bindTo(meterRegistry);
+```
+
+**Spans com falha em cascata:** quando o Circuit Breaker está `OPEN`, as chamadas bloqueadas não geram spans no serviço downstream — o span do serviço chamador termina imediatamente com erro `CircuitBreakerOpenException`. No Jaeger, isso aparece como um span de duração zero com status `ERROR` — padrão visualmente distinto de um timeout real, facilitando o diagnóstico de falhas em cascata.
+
+```promql
+# Alerta quando o Circuit Breaker de qualquer integração está OPEN
+resilience4j_circuitbreaker_state{state="open"} == 1
+```
+
+---
+
+#### 26.4. Saga e Rastreabilidade de Transações Distribuídas
+
+**Referência:** Chris Richardson — *Microservices Patterns* (Manning, 2018), cap. 4; Richardson — [Saga (microservices.io)](https://microservices.io/patterns/data/saga.html)
+
+O padrão Saga gerencia transações distribuídas de longa duração como sequências de transações locais em cada serviço, com transações de compensação em caso de falha. Do ponto de vista de observabilidade, a Saga introduz um desafio específico: a jornada de uma transação distribui-se por múltiplas requisições HTTP independentes, cada uma com seu próprio `traceId`.
+
+**`sagaId` como chave de correlação de negócio:** enquanto o `traceId` correlaciona spans dentro de uma única requisição HTTP, a Saga exige uma chave de correlação de negócio que persiste ao longo de todas as etapas — incluindo transações de compensação que ocorrem em requisições separadas, possivelmente horas depois.
+
+```java
+// Etapa 1 da Saga — CreateOrderSaga
+LogSistematico
+    .registrando("Saga de criação de pedido iniciada")
+    .em(CreateOrderSaga.class, "iniciar")
+    .comDetalhe("eventType", "SAGA_STARTED")
+    .comDetalhe("sagaId",    saga.getId())      // chave de correlação da Saga
+    .comDetalhe("sagaType",  "CreateOrderSaga")
+    .comDetalhe("pedidoId",  pedido.getId())
+    .info();
+
+// Etapa 2 — ReservationStep (requisição separada, traceId diferente)
+LogSistematico
+    .registrando("Reserva de estoque iniciada pela saga")
+    .em(ReservationStep.class, "executar")
+    .comDetalhe("sagaId",   saga.getId())       // mesmo sagaId — correlação cross-trace
+    .comDetalhe("stepName", "ReservationStep")
+    .comDetalhe("stepOrder", "2")
+    .info();
+```
+
+Query no Kibana que reconstrói a história completa da Saga — independente de quantos `traceId` diferentes foram gerados ao longo das etapas:
+
+```
+detalhe_sagaId: "saga-8821-2026-03" AND @timestamp:[now-24h TO now]
+| sort @timestamp asc
+```
+
+**Métricas de duração da Saga:** o tempo total de conclusão de uma Saga — da etapa 1 até a confirmação final ou compensação — é um KPI de negócio relevante. Um `Timer` com `sagaType` como tag permite detectar degradação no tempo de conclusão antes que impacte os usuários:
+
+```promql
+# p95 de duração da CreateOrderSaga nos últimos 30 minutos
+histogram_quantile(0.95,
+    rate(saga_duracao_seconds_bucket{sagaType="CreateOrderSaga"}[30m])
+)
+```
+
+**Transações de compensação:** quando uma etapa da Saga falha e transações de compensação são disparadas, cada compensação deve incluir nos logs o `sagaId` original e o `stepName` da etapa que foi compensada. Isso permite reconstruir a jornada completa de compensação — o que falhou, em qual etapa, e quais compensações foram aplicadas — usando um único filtro por `sagaId` no agregador de logs.
+
+---
 ## Parte VII — Governança e Operação
 
 ### 27. Registro de Nomes de Campos Canônicos
 
+> Os nomes de campos são reservados e devem ser usados consistentemente em todos os serviços e nos três módulos da biblioteca. Usar sinônimos — `usuarioId` em vez de `userId`, `service` em vez de `applicationName` — viola o princípio de consistência e produz resultados divididos em ferramentas de analytics: uma query por `userId` retorna metade dos eventos; a outra metade está indexada sob `usuarioId`.
+
+---
+
 #### 27.1. Convenção de Nomenclatura
+
+O projeto adota as seguintes convenções, alinhadas ao ecossistema nativo do Quarkus e do JBoss Logging:
+
+- **`camelCase`** para identificadores de correlação, auditoria e contexto — consistente com a nomenclatura nativa do OpenTelemetry SDK e JBoss Logging: `userId`, `traceId`, `spanId`, `actorId`, `entityType`.
+- **Prefixo `log_`** para campos declarados explicitamente na DSL via `.em()`, `.porque()`, `.como()`: `log_classe`, `log_metodo`, `log_motivo`, `log_canal`.
+- **Prefixo `detalhe_`** para campos de negócio declarados via `.comDetalhe()` — evita colisão com campos de infraestrutura no índice do Elasticsearch/Loki: `detalhe_pedidoId`, `detalhe_errorCode`, `detalhe_eventType`.
+
+A transformação para convenções de plataformas externas — ECS do Elasticsearch, `dd.trace_id` do Datadog — é responsabilidade do coletor de infraestrutura (OTel Collector, Logstash, FluentBit), não da aplicação.
+
+---
 
 #### 27.2. Campos de Identidade e Correlação
 
+Campos inseridos automaticamente pelo `GerenciadorContextoLog` via MDC. O desenvolvedor não os declara — estão presentes em todo evento de log da requisição.
+
+| Campo | Tipo | Descrição | Fonte |
+|---|---|---|---|
+| `userId` | `string` | Identificador do usuário autenticado. `"anonimo"` quando não autenticado — nunca `null`, nunca ausente. | Automático — `GerenciadorContextoLog` via `SecurityIdentity` |
+| `traceId` | `string` | Identificador do trace distribuído W3C. Presente quando há span OTel ativo. | Automático — OpenTelemetry SDK via `Span.current()` |
+| `spanId` | `string` | Identificador do span corrente dentro do trace. Presente quando há span OTel ativo. | Automático — OpenTelemetry SDK via `Span.current()` |
+| `applicationName` | `string` | Nome do microsserviço. Lido de `quarkus.application.name`. | Automático — `GerenciadorContextoLog` |
+
+**`traceId` vs. `spanId`:** o `traceId` é constante ao longo de toda a requisição distribuída — é o identificador global que atravessa todos os serviços. O `spanId` identifica a operação individual corrente — é o nó exato da árvore onde ocorreu a falha ou o gargalo. Juntos, são suficientes para diagnóstico completo em todos os níveis, sem identificadores adicionais.
+
+---
+
 #### 27.3. Campos de Localização Técnica
+
+Campos inseridos automaticamente pelo `LogInterceptor` via MDC quando o bean está anotado com `@Logged`.
+
+| Campo | Tipo | Descrição | Exemplo |
+|---|---|---|---|
+| `classe` | `string` | Nome simples da classe interceptada pelo `@Logged`. | `"PedidoService"` |
+| `metodo` | `string` | Nome do método interceptado pelo `@Logged`. | `"criar"` |
+
+**`log_classe`/`log_metodo` vs. `classe`/`metodo`:** os campos sem prefixo são injetados pelo interceptor e refletem o método interceptado. Os campos com prefixo `log_` são declarados pelo desenvolvedor via `.em()` e refletem a localização semântica do evento — que pode diferir quando o log é emitido em um método auxiliar privado chamado pelo método interceptado.
+
+---
 
 #### 27.4. Campos da DSL (`log_`)
 
+Campos declarados explicitamente pelo desenvolvedor na cadeia da DSL. O prefixo `log_` os distingue dos campos de infraestrutura e dos campos de negócio.
+
+| Campo | Tipo | Declarado via | Descrição | Exemplo |
+|---|---|---|---|---|
+| `timestamp` | `string` | Automático (formatador) | Timestamp UTC, precisão de milissegundos, ISO 8601. | `"2026-03-11T21:55:00.123Z"` |
+| `level` | `string` | Automático (formatador) | Nível de severidade do evento. | `"INFO"`, `"ERROR"` |
+| `message` | `string` | `.registrando("texto")` | Descrição factual do evento — dimensão *What*. Deve ser estável entre ocorrências do mesmo tipo de evento. | `"Pedido criado"` |
+| `log_classe` | `string` | `.em(Classe.class, ...)` | Classe onde o evento ocorreu — dimensão *Where* técnica. | `"PedidoService"` |
+| `log_metodo` | `string` | `.em(..., "metodo")` | Método onde o evento ocorreu — dimensão *Where* técnica. | `"criar"` |
+| `log_motivo` | `string` | `.porque("motivo")` | Causa ou motivação de negócio — dimensão *Why*. Sempre em linguagem de domínio, nunca técnica. | `"Solicitação do cliente via checkout"` |
+| `log_canal` | `string` | `.como("canal")` | Canal ou mecanismo de entrada do evento — dimensão *How*. | `"API REST — POST /pedidos"` |
+
+---
+
 #### 27.5. Campos de Negócio (`detalhe_`)
 
+Campos declarados via `.comDetalhe(chave, valor)`. O prefixo `detalhe_` é aplicado automaticamente pela DSL — o desenvolvedor declara apenas o nome sem o prefixo.
+
+| Declaração no código | Campo no JSON | Tipo no JSON | Notas |
+|---|---|---|---|
+| `.comDetalhe("pedidoId", 4821)` | `detalhe_pedidoId` | `string` | Inteiros convertidos para string |
+| `.comDetalhe("valorTotal", 349.90)` | `detalhe_valorTotal` | `number` | `float`/`double` preservam o tipo |
+| `.comDetalhe("errorCode", "PAG-4022")` | `detalhe_errorCode` | `string` | Chave de correlação com a KEDB |
+| `.comDetalhe("eventType", "ORDER_COMPLETED")` | `detalhe_eventType` | `string` | Discriminador de eventos de negócio |
+| `.comDetalhe("sagaId", "saga-8821")` | `detalhe_sagaId` | `string` | Correlação cross-trace em Sagas |
+| `.comDetalhe("token", tokenValue)` | `detalhe_token` | `string` | Mascarado automaticamente: `"****"` |
+| `.comDetalhe("email", emailValue)` | `detalhe_email` | `string` | Mascarado automaticamente: `"[PROTEGIDO]"` |
+
+O prefixo `detalhe_` serve dois propósitos: evitar colisão com campos reservados de infraestrutura no índice do Elasticsearch/Loki, e distinguir visualmente campos de negócio de campos de contexto técnico nas ferramentas de analytics.
+
+---
+
 #### 27.6. Campos de Auditoria
+
+Campos obrigatórios em eventos de auditoria. **Estado atual (v0.2):** declarados via `.comDetalhe()` — aparecem no JSON com prefixo `detalhe_`. O prefixo será removido quando `@Auditable` for implementado na v0.3. Queries construídas agora devem usar `detalhe_actorId`; serão atualizadas na migração para v0.3.
+
+| Campo canônico | Campo no JSON (v0.2) | Tipo | Descrição |
+|---|---|---|---|
+| `actorId` | `detalhe_actorId` | `string` | Quem executou a ação — pode diferir de `userId` em cenários de impersonação ou backoffice |
+| `entityType` | `detalhe_entityType` | `string` | Tipo da entidade afetada: `"Pedido"`, `"Contrato"`, `"Usuario"` |
+| `entityId` | `detalhe_entityId` | `string` | Identificador da instância da entidade afetada |
+| `stateBefore` | `detalhe_stateBefore` | `string` | Estado da entidade antes da operação — serializado como JSON string |
+| `stateAfter` | `detalhe_stateAfter` | `string` | Estado da entidade após a operação |
+| `outcome` | `detalhe_outcome` | `string` | Resultado da operação: `"SUCCESS"`, `"FAILURE"`, `"PARTIAL"` |
 
 ---
 
 ### 28. Padrões Proibidos
 
+Os padrões abaixo são destrutivos para a infraestrutura de observabilidade e devem ser barrados sistematicamente em Pull Requests. Cada item corresponde a um item do Checklist de Code Review (seção 30).
+
+---
+
 #### 28.1. P1 — Saída via Fluxo de Sistema (`System.out`, `printStackTrace`)
+
+`System.out`, `System.err` e `e.printStackTrace()` ignoram o MDC, os níveis de severidade e o formatador JSON. O output vai para stdout sem estrutura, sem campos de correlação e sem possibilidade de indexação.
+
+```java
+// PROIBIDO
+System.out.println("Processando nota id " + notaId);
+System.err.println("Falhou: " + e.getMessage());
+e.printStackTrace();
+
+// CORRETO
+LogSistematico
+    .registrando("Nota processada")
+    .em(NotaService.class, "processar")
+    .comDetalhe("notaId", notaId)
+    .info();
+```
+
+---
 
 #### 28.2. P2 — Concatenação de Strings e Pseudo-JSON
 
+Strings interpoladas não são indexáveis. Qualquer caractere especial nos valores pode quebrar o parser do coletor. A coluna do campo não tem identidade analítica — não é possível filtrar por `notaId` sem regex frágil:
+
+```java
+// PROIBIDO
+log.info("Processo da nota " + notaId + " feito por " + userId);
+log.info(String.format("{\"notaOrigem\":\"%s\"}", notaId));
+
+// CORRETO
+LogSistematico
+    .registrando("Nota processada")
+    .em(NotaService.class, "processar")
+    .comDetalhe("notaId", notaId)
+    .comDetalhe("userId", userId)
+    .info();
+```
+
+---
+
 #### 28.3. P3 — Registro Apenas da Mensagem da Exceção
+
+`e.getMessage()` descarta a classe da exceção (necessária para fingerprinting), o stack trace (necessário para localizar o bug) e a cadeia de causas (necessária para entender a raiz). O objeto completo deve sempre ser passado ao terminador `.erro(e)`:
+
+```java
+// PROIBIDO — descarta classe, stack trace e cadeia de causas
+log.error(e.getMessage());
+log.error("Erro: " + e.getMessage());
+
+// CORRETO — objeto de exceção completo
+LogSistematico
+    .registrando("Falha ao processar venda")
+    .em(VendaService.class, "processar")
+    .porque("Erro inesperado no gateway")
+    .comDetalhe("vendaId", vendaId)
+    .erro(e);
+```
+
+---
 
 #### 28.4. P4 — Mensagens Genéricas sem Identificadores de Entidade
 
+Em sistemas de alto volume, `"Erro ao salvar no banco"` pode corresponder a centenas de ocorrências distintas sem nenhuma pista sobre qual entidade, operação ou contexto. Todo evento deve incluir o identificador da entidade afetada:
+
+```java
+// PROIBIDO — sem valor diagnóstico em produção
+log.error("Erro ao salvar no banco");
+log.warn("Validação falhou");
+log.info("Iniciado");
+
+// CORRETO
+LogSistematico
+    .registrando("Falha ao salvar venda")
+    .em(VendaService.class, "salvar")
+    .porque("Chave duplicada no banco")
+    .comDetalhe("vendaId", vendaId)
+    .erro(e);
+```
+
+---
+
 #### 28.5. P5 — Log-and-Throw sem Contexto Adicional
+
+Registrar a mesma exceção em múltiplas camadas sem agregar informação nova duplica o ruído no agregador. **Regra: logue na fronteira onde a exceção é tratada, com o contexto completo disponível naquela camada.**
+
+```java
+// PROIBIDO — camada superior repetirá o mesmo erro sem contexto novo
+catch (VendaException e) {
+    LogSistematico.registrando("Erro na venda").em(...).erro(e);
+    throw e;   // log duplicado na camada acima
+}
+
+// CORRETO — loga na fronteira de tratamento, com contexto completo
+catch (VendaException e) {
+    LogSistematico
+        .registrando("Falha tratada no processamento de venda")
+        .em(VendaController.class, "processar")
+        .porque(e.getMotivo())
+        .comDetalhe("vendaId",   vendaId)
+        .comDetalhe("errorCode", "VND-3001")
+        .erro(e);
+    return Response.status(500).entity(ErrorResponse.from(e)).build();
+}
+```
+
+Quando a exceção precisa ser propagada com log, usar `.erroERelanca(e)` — que loga e relança em uma única operação, tornando a intenção explícita.
+
+---
 
 #### 28.6. P6 — `traceId` Gerado Manualmente
 
+`UUID.randomUUID()` como `traceId` cria um identificador que não existe em nenhuma árvore de rastreamento. Não correlaciona com nenhum span no Jaeger, não aparece em nenhum trace no Grafana Tempo e torna o campo completamente inútil para diagnóstico distribuído:
+
+```java
+// PROIBIDO — identificador falso, não correlacionável com nenhum span
+String traceId = UUID.randomUUID().toString();
+MDC.put("traceId", traceId);
+
+// CORRETO — GerenciadorContextoLog extrai de Span.current() automaticamente
+// (feito pelo LogContextoFiltro no início de cada requisição HTTP)
+```
+
+---
+
 #### 28.7. P7 — MDC sem Limpeza no `finally`
+
+Em pools de threads, a mesma thread atende múltiplas requisições sequencialmente. Sem limpeza, o contexto da requisição anterior contamina silenciosamente a próxima — `userId` errado, `traceId` errado em todos os logs subsequentes:
+
+```java
+// PROIBIDO — contexto vaza para a próxima requisição na mesma thread
+MDC.put("userId", userId);
+processarNegocio();
+// sem limpeza
+
+// CORRETO — limpeza garantida independente de exceção
+gerenciadorContextoLog.inicializar(userId);
+try {
+    processarNegocio();
+} finally {
+    gerenciadorContextoLog.limpar();
+}
+```
+
+---
 
 #### 28.8. P8 — Computação Custosa sem Guarda de Nível
 
+Serializar um objeto para JSON tem custo de CPU e memória. Se `DEBUG` estiver desabilitado em produção — o que é padrão — esse custo é pago para produzir um log que nunca será emitido:
+
+```java
+// PROIBIDO — serializa o pedido mesmo com DEBUG desabilitado
+log.debug("Estado do pedido: {}", objectMapper.writeValueAsString(pedido));
+
+// CORRETO — custo pago apenas se o nível estiver habilitado
+if (log.isDebugEnabled()) {
+    LogSistematico
+        .registrando("Estado intermediário do pedido")
+        .em(PedidoService.class, "processar")
+        .comDetalhe("pedido", objectMapper.writeValueAsString(pedido))
+        .debug();
+}
+```
+
+---
+
 #### 28.9. P9 — Manipulação Direta do MDC fora do `GerenciadorContextoLog`
+
+Chamadas a `MDC.put()` dispersas no código de aplicação criam campos fora do contrato canônico, dificultam o rastreamento de vazamentos de contexto e podem sobrescrever campos gerenciados pela biblioteca:
+
+```java
+// PROIBIDO — campo fora do contrato canônico, sem garantia de limpeza
+MDC.put("meu_campo_customizado", valor);
+
+// CORRETO — campos de negócio via .comDetalhe() da DSL
+LogSistematico
+    .registrando("Evento")
+    .em(MinhaClasse.class, "meuMetodo")
+    .comDetalhe("meuCampo", valor)
+    .info();
+```
 
 ---
 
@@ -1517,37 +4065,271 @@ LogContextoFiltro.filter(response)    ← MDC: limpo completamente (MDC.clear())
 
 #### 29.1. Tabela de Níveis e Uso Correto
 
+| Nível | Quando usar | Exemplos | Habilitado em produção? |
+|---|---|---|---|
+| `TRACE` | Diagnóstico de baixo nível: entradas/saídas de métodos, iterações, valores intermediários detalhados | Dump de payload antes da serialização; valor de cada campo em um loop de validação | Nunca — apenas em desenvolvimento local |
+| `DEBUG` | Fluxos internos, decisões condicionais, dados intermediários sem alteração de estado | Branch condicional tomado; resultado de cálculo interno | Não por padrão — ativável dinamicamente por pacote |
+| `INFO` | Operações que alteram estado: persistência, autenticação, chamadas externas, eventos de negócio | Pedido criado; login bem-sucedido; nota fiscal emitida | Sempre |
+| `WARN` | Situações anômalas recuperáveis: fallbacks ativados, validações rejeitadas, limites se aproximando | Retry ativado; configuração ausente com fallback padrão; fila se aproximando da capacidade | Sempre |
+| `ERROR` | Falhas reais: exceção que impede o cumprimento do contrato da operação | Gateway timeout; falha de persistência; erro de integração | Sempre |
+| `FATAL` | Falhas que tornam a instância operacionalmente inviável — exigem intervenção imediata | Falha de inicialização do datasource; corrupção de configuração crítica | Sempre |
+
+**Regra de consistência:** o mesmo tipo de evento deve sempre usar o mesmo nível. Um `"Login falhou"` que às vezes é `WARN` (usuário errou a senha) e às vezes é `ERROR` (problema no provedor de identidade) deve ser separado em dois eventos distintos com mensagens e níveis específicos.
+
+**Regra anti-duplicação:** é proibido registrar a mesma exceção em múltiplas camadas sem agregar contexto adicional. Cada camada loga apenas o que sabe a mais sobre o erro.
+
+---
+
 #### 29.2. `FATAL` no JBoss Logging vs. SLF4J
 
+O JBoss Logging — framework nativo do Quarkus — suporta o nível `FATAL` (`org.jboss.logging.Logger.Level.FATAL`). O SLF4J — interface usada em ambientes Jakarta EE genéricos — não define `FATAL`; o nível mais alto disponível é `ERROR`.
+
+| Framework | Nível mais alto | Equivalência |
+|---|---|---|
+| JBoss Logging (Quarkus) | `FATAL` | `FATAL` nativo |
+| SLF4J | `ERROR` | `ERROR` com `detalhe_errorCode` de criticidade máxima e `detalhe_eventType: "FATAL_ERROR"` |
+
+Na implementação Quarkus desta biblioteca, `FATAL` está disponível via terminador dedicado. Na implementação SLF4J, eventos de criticidade equivalente devem usar `ERROR` com campos estruturados que identificam a criticidade — jamais silenciar ou rebaixar a severidade.
+
+---
+
 #### 29.3. Ativação Dinâmica de `DEBUG` em Produção
+
+Em produção, logs `DEBUG` são desabilitados por padrão. Reabilitá-los durante um incidente — sem reinicialização da aplicação — é possível via duas abordagens:
+
+**Quarkus — `quarkus-logging-manager`:**
+
+```bash
+# Ativa DEBUG para um pacote específico em tempo de execução via REST API
+curl -X POST http://meu-servico/q/logging-manager/loggers/br.com.dominio.pagamentos \
+     -H "Content-Type: application/json" \
+     -d '{"level": "DEBUG"}'
+
+# Restaura INFO
+curl -X POST http://meu-servico/q/logging-manager/loggers/br.com.dominio.pagamentos \
+     -H "Content-Type: application/json" \
+     -d '{"level": "INFO"}'
+```
+
+O endpoint `/q/logging-manager` deve ser protegido por autenticação em produção — expô-lo sem controle de acesso permite que qualquer cliente sature o sistema com logs `DEBUG`.
+
+**OKD / Kubernetes — `ConfigMap` com recarga:** se a aplicação lê a configuração de um `ConfigMap` do OKD com recarga automática habilitada (`quarkus.config.locations`), alterar o `ConfigMap` com o novo nível de log aplica a mudança sem restart do pod.
 
 ---
 
 ### 30. Checklist de Code Review
 
----
+Antes de aprovar qualquer Pull Request que toque em código de logging, tracing ou métricas:
 
+**Logging estruturado:**
+
+- [ ] Nenhum `System.out.println`, `System.err.println` ou `e.printStackTrace()`
+- [ ] Nenhuma concatenação de string ou `String.format` em mensagens de log
+- [ ] Nenhum `log.error(e.getMessage())` — objeto de exceção completo passado ao terminador `.erro(e)`
+- [ ] Nenhuma mensagem genérica — identificadores de entidade presentes via `.comDetalhe()`
+- [ ] Nenhum log-and-throw sem contexto adicional — log na fronteira de tratamento com `.erro(e)` ou `.erroERelanca(e)`
+- [ ] Campos de negócio com nomes canônicos do FIELD_NAMES (seção 27) — nenhum sinônimo
+- [ ] Nenhum dado sensível sem mascaramento — campos que exigem redação total omitidos antes de `.comDetalhe()`
+- [ ] Eventos críticos incluem `detalhe_errorCode` para correlação com KEDB
+- [ ] Computações custosas protegidas por guarda de nível (`isDebugEnabled()`)
+
+**Contexto e MDC:**
+
+- [ ] Nenhum `UUID.randomUUID()` como `traceId` — contexto OTel via `GerenciadorContextoLog`
+- [ ] MDC limpo no bloco `finally` via `GerenciadorContextoLog.limpar()` — nunca depende de sobrescrita
+- [ ] Nenhum `MDC.put()` direto fora do `GerenciadorContextoLog`
+- [ ] Métodos que retornam `Uni<T>` ou `Multi<T>` com `@Rastreado`: verificar que logs em continuations reativos contêm `spanId` não nulo e não vazio
+
+**Tracing:**
+
+- [ ] `@Rastreado` e `@Logged` no mesmo bean: verificar que `@Priority` segue a convenção `1000/2000` (Rastreamento antes de Logged)
+- [ ] Enriquecedores de negócio: nenhum dado sensível adicionado como atributo de span
+- [ ] Falhas de infraestrutura OTel (`span.end()`, `span.setStatus()`) tratadas com `try-catch` — não propagam como exceção de negócio
+
+**Métricas:**
+
+- [ ] Nenhuma tag de alta cardinalidade (`userId`, `traceId`, `pedidoId`) em counter, timer ou gauge
+- [ ] Gauges com `Gauge.builder` ou `gaugeCollectionSize`: referência forte ao objeto observado mantida pelo bean
+- [ ] Falhas de `MeterRegistry` tratadas com `try-catch` — não interrompem o fluxo de negócio
+
+**Geral:**
+
+- [ ] Falhas de qualquer backend de observabilidade (tracing, métricas, log exporter) tratadas localmente — nunca relançadas como exceção de negócio
+- [ ] `quarkus-smallrye-context-propagation` presente no `pom.xml` quando há métodos reativos instrumentados
+---
 ### 31. Ciclo de Melhoria Contínua
 
 #### 31.1. Retroalimentação Pós-Incidente
 
+O logging, o tracing e as métricas são componentes vivos da arquitetura — não artefatos estáticos configurados uma vez e esquecidos. A qualidade da observabilidade de um sistema é proporcional ao número de incidentes que foram usados para refiná-la.
+
+O ciclo de melhoria pós-incidente é estruturado em quatro etapas:
+
+```
+1. INCIDENTE EM PRODUÇÃO
+   └─ Diagnóstico realizado com os dados disponíveis
+
+2. REVISÃO PÓS-INCIDENTE (Post-Mortem)
+   └─ Quais informações estavam ausentes e atrasaram o diagnóstico?
+   └─ Qual pilar foi mais útil? Qual foi insuficiente?
+   └─ Onde o traceId estava ausente? Onde o spanId estava incorreto?
+   └─ Qual campo teria reduzido o MTTR em mais de 50%?
+
+3. MELHORIA DA INSTRUMENTAÇÃO
+   └─ Adicionar o campo ausente via .comDetalhe() ou novo EnriquecedorSpan
+   └─ Refinar o .porque() em fluxos onde estava genérico
+   └─ Adicionar @Rastreado em métodos que foram gargalos mas não tinham span
+   └─ Criar alerta para o padrão de falha identificado
+
+4. INSTITUCIONALIZAÇÃO
+   └─ Atualizar o checklist de Code Review (seção 30)
+   └─ Documentar o errorCode novo na KEDB
+   └─ Registrar o padrão novo como caso de uso no catálogo de eventType
+   └─ Comunicar a melhoria para todos os times que usam a biblioteca
+```
+
+**Exemplos de melhorias derivadas de incidentes reais:**
+
+| Lacuna identificada no incidente | Melhoria implementada |
+|---|---|
+| `userId` ausente em logs de jobs agendados | `LogContextoFiltro` expandido para identificar jobs com `"anonimo"` explícito |
+| `log_motivo` genérico em falhas de gateway | `.porque()` refinado com código de retorno do gateway no fluxo de pagamento |
+| `traceId` ausente em logs de consumidores Kafka | `quarkus-smallrye-context-propagation` adicionado; `LogContextoFiltro` adaptado para o ciclo de vida do consumer |
+| Impossível distinguir erros de negócio de erros de infraestrutura em alertas | `detalhe_errorCode` com prefixo de domínio (`PAG-`, `VND-`) adicionado a todos os fluxos críticos |
+| Dois serviços com nomes de campo diferentes para o mesmo conceito | Catálogo de `eventType` e `FIELD_NAMES` centralizados e distribuídos como contrato compartilhado |
+
+> *Cada incidente é uma oportunidade de tornar o próximo diagnóstico mais rápido. Um sistema que nunca melhora sua instrumentação após incidentes tende a repetir os mesmos MTTR indefinidamente.*
+> — Charity Majors, Liz Fong-Jones, George Miranda — *Observability Engineering* (O'Reilly, 2022)
+
+---
+
 #### 31.2. Métricas de Qualidade do Pipeline de Telemetria
+
+A observabilidade do próprio pipeline de observabilidade é frequentemente negligenciada. Um `traceId` ausente em logs, spans descartados silenciosamente pelo sampler ou logs não chegando ao Elasticsearch são falhas invisíveis que só se revelam durante um incidente — quando a dependência dos dados é máxima.
+
+O OTel SDK expõe métricas internas do pipeline de telemetria automaticamente quando `quarkus-opentelemetry` está ativo. O Quarkus as disponibiliza via `/q/metrics`:
+
+**Métricas de exportação de spans:**
+
+```promql
+# Spans exportados com sucesso para o OTel Collector
+otel_exporter_otlp_spans_exported_total{result="success"}
+
+# Spans que falharam na exportação — backend indisponível, timeout, erro de rede
+otel_exporter_otlp_spans_exported_total{result="failed"}
+
+# Taxa de falha de exportação — alerta se > 0 por mais de 1 minuto
+rate(otel_exporter_otlp_spans_exported_total{result="failed"}[1m]) > 0
+```
+
+**Métricas de sampling:**
+
+```promql
+# Spans descartados pelo sampler — normal se tail-based sampling ativo no Collector
+otel_sampler_spans_dropped_total
+
+# Spans aceitos pelo sampler
+otel_sampler_spans_accepted_total
+
+# Taxa de descarte pelo sampler — detecta configuração incorreta
+otel_sampler_spans_dropped_total
+/ (otel_sampler_spans_dropped_total + otel_sampler_spans_accepted_total)
+```
+
+**Métricas de qualidade de logs — verificação de presença de `traceId`:**
+
+Não há métrica nativa para ausência de `traceId` em logs — mas é possível criar uma via query no agregador de logs. Em Grafana Loki:
+
+```logql
+# Proporção de logs ERROR sem traceId nas últimas 1h
+# Um valor > 0 indica quebra de propagação de contexto
+sum(rate({app="pagamentos-service"} | json | level="ERROR" | traceId="" [1h]))
+/
+sum(rate({app="pagamentos-service"} | json | level="ERROR" [1h]))
+```
+
+**Alertas recomendados para o pipeline de telemetria:**
+
+| Alerta | Condição | Severidade | Ação |
+|---|---|---|---|
+| Exportação de spans falhando | `rate(otel_exporter_..._failed[1m]) > 0` por 2min | Warning | Verificar conectividade com OTel Collector |
+| Taxa de descarte de spans anômala | Sampler descartando > 90% em ambiente de baixo volume | Warning | Verificar configuração do tail-based sampler |
+| Logs sem `traceId` | > 5% dos logs ERROR sem `traceId` | Critical | Verificar `quarkus-smallrye-context-propagation` e `LogContextoFiltro` |
+| `/q/metrics` indisponível | Health check falha no endpoint Prometheus | Warning | Verificar `quarkus-micrometer` e configuração do scrape |
 
 ---
 
 ### 32. Fora do Escopo
 
+Esta seção documenta explicitamente o que não faz parte da biblioteca — decisões que podem parecer alternativas válidas mas que violam o padrão ou introduzem problemas arquiteturais.
+
+---
+
 #### 32.1. API Fluent Direta do SLF4J 2.x
 
-#### 32.2. `ExceptionReporter` e Backends de Rastreamento (v0.3)
+O método `logger.atInfo().addKeyValue("chave", valor).log("mensagem")` — introduzido no SLF4J 2.x — produz JSON estruturado tecnicamente, mas apresenta três limitações estruturais em relação à DSL `LogSistematico`:
+
+- **Sem enforcement do 5W1H em tempo de compilação:** nenhuma das dimensões obrigatórias (*What*, *Where*) é verificada pelo compilador. Logs incompletos são detectados apenas em revisão de código ou em produção.
+- **Sem mascaramento automático:** `addKeyValue("token", tokenValue)` emite o valor em claro — o `SanitizadorDados` não é invocado.
+- **Sem integração com `GerenciadorContextoLog`:** campos de correlação adicionados via `addKeyValue` não seguem o contrato canônico de campos definido em `FIELD_NAMES`.
+
+**Uso aceitável:** logs internos da própria biblioteca, utilitários de infraestrutura sem contexto de domínio, e diagnóstico temporário em desenvolvimento. Para código de aplicação que deve obedecer ao padrão, `LogSistematico` é obrigatório.
+
+---
+
+#### 32.2. `ExceptionReporter` e Backends de Rastreamento de Exceções (v0.3)
+
+A abstração `ExceptionReporter` — CDI bean com integração a Sentry, Rollbar ou webhook customizado — está planejada para a versão 0.3 da biblioteca. Não está disponível nesta versão.
+
+Até então, exceções devem ser registradas via `LogSistematico.erro(e)` com contexto completo — que é o pré-requisito para que o `ExceptionReporter` funcione eficazmente quando implementado. Implementações manuais de integração com Sentry ou similares no código de aplicação criarão acoplamento direto que precisará ser removido na migração para v0.3.
+
+---
 
 #### 32.3. `AuditRecord` e `@Auditable` (v0.3)
 
+O `AuditRecord` e o interceptor `@Auditable` são abstrações documentadas conceitualmente e planejadas para a versão 0.3. Não estão disponíveis nesta versão.
+
+Até então, eventos de auditoria devem ser registrados via `LogSistematico` com os campos obrigatórios declarados explicitamente via `.comDetalhe()` — conforme documentado na seção 13.4. Quando `@Auditable` for implementado, os campos de auditoria serão emitidos como chaves de primeiro nível no JSON sem o prefixo `detalhe_`. Queries construídas agora com `detalhe_actorId` precisarão ser atualizadas — documentar essa dependência no momento da implementação.
+
+---
+
 #### 32.4. Output GELF/Graylog Nativo na Aplicação
+
+Configurar `quarkus.log.handler.gelf.enabled=true` transmite logs diretamente da aplicação para o Graylog via UDP — acoplando a aplicação à infraestrutura de coleta. Esse padrão viola dois princípios da arquitetura:
+
+**Acoplamento de infraestrutura:** trocar de backend de logs (Graylog → Loki) exige alteração de configuração em cada aplicação. A arquitetura correta emite JSON para stdout; o escoamento é responsabilidade do coletor externo (OTel Collector, FluentBit).
+
+**Inconsistência de formato:** o GELF usa um formato JSON aninhado diferente do formato flat produzido por `quarkus-logging-json`. A coexistência dos dois formatos no mesmo pipeline cria inconsistências nos campos indexados — queries que funcionam para logs via FluentBit falham para logs via GELF.
+
+A integração com Graylog em OKD deve ser feita via FluentBit com output GELF configurado no coletor — sem nenhuma alteração nas aplicações.
+
+---
 
 #### 32.5. Log Rotation e Escrita em Arquivo
 
-#### 32.6. `@AroundInvoke` Manual pelo Desenvolvedor
+Lógicas de rotação de arquivo e controle de escrita em disco contradizem o modelo container-native (OKD, Kubernetes). Containers descartáveis não devem gerenciar arquivos — devem emitir para stdout. A governança de armazenamento e retenção é responsabilidade da plataforma de orquestração e do coletor.
+
+Configurações como `quarkus.log.file.enable=true` e `quarkus.log.file.rotation.*` são incompatíveis com o modelo de deploy em OKD:
+
+- O arquivo de log não persiste quando o pod é reiniciado ou reprogramado para outro nó.
+- O arquivo não é coletado pelo FluentBit DaemonSet — fica invisível para o agregador centralizado.
+- Rotação de arquivo em container cria pressão em disco no nó de OKD que pode afetar outros pods no mesmo nó.
+
+**Caso especial — debug local:** em desenvolvimento local sem agregador, escrever em arquivo temporariamente é aceitável. Deve ser configurado exclusivamente no perfil `%dev` e nunca no perfil `%prod`.
+
+---
+
+#### 32.6. `@AroundInvoke` Manual pelo Desenvolvedor de Aplicação
+
+O `LogInterceptor` da biblioteca já realiza via `@Logged` a inserção de campos de localização no MDC, a coleta de métricas de latência e falha, e a limpeza de contexto no `finally`. Criar interceptors CDI com `@AroundInvoke` paralelos no código de aplicação introduz três problemas:
+
+**Duplicação de responsabilidade:** se o interceptor da aplicação também registra localização no MDC, os campos `classe` e `metodo` podem ser sobrescritos com valores incorretos — ou a limpeza pode ocorrer em ordem errada, deixando o contexto sujo após o método.
+
+**Risco de vazamento de contexto em ambientes reativos:** o `LogInterceptor` da biblioteca foi projetado para funcionar com `quarkus-smallrye-context-propagation`. Interceptors manuais sem esse cuidado podem escrever no MDC da thread do interceptor sem garantia de propagação para continuations reativos — produzindo `spanId` incorreto nos logs assíncronos.
+
+**Campos fora do contrato canônico:** campos adicionados diretamente via `MDC.put()` em um interceptor manual não passam pelo `SanitizadorDados`, não seguem as convenções de prefixo do `FIELD_NAMES` e não são listados no contrato da biblioteca — tornando-os invisíveis para revisores de código que consultam a documentação.
+
+A extensão correta do comportamento de interceptação é via `EnriquecedorSpan` (seção 17) para atributos de tracing, ou via campos adicionais em `.comDetalhe()` dentro do próprio método de negócio.
 
 ---
 
