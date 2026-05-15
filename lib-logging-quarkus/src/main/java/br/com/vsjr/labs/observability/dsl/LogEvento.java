@@ -68,7 +68,7 @@ public record LogEvento(
         evento = normalizarObrigatorio(evento, ValoresPadrao.EVENTO_NAO_INFORMADO, false);
         classe = normalizarObrigatorio(classe, ValoresPadrao.LOCALIZACAO_DESCONHECIDA, true);
         metodo = normalizarObrigatorio(metodo, ValoresPadrao.LOCALIZACAO_DESCONHECIDA, true);
-        motivo = normalizarOpcional(motivo, true);
+        motivo = normalizarOpcional(motivo, false);
         entrypoint = normalizarOpcional(entrypoint, false);
 
         if (detalhes == null || detalhes.isEmpty()) {
@@ -76,7 +76,7 @@ public record LogEvento(
         } else {
             var detalhesNormalizados = new LinkedHashMap<String, Object>();
             detalhes.forEach((chave, valor) -> {
-                var chaveNormalizada = normalizarOpcional(chave, true);
+                var chaveNormalizada = normalizarOpcional(chave, false);
                 if (chaveNormalizada != null) {
                     detalhesNormalizados.put(canonizarChaveDetalhe(chaveNormalizada), valor != null ? valor : "null");
                 }
@@ -105,7 +105,8 @@ public record LogEvento(
     }
 
     private static String canonizarChaveDetalhe(String chaveNormalizada) {
-        if ("eventtype".equals(chaveNormalizada) || "event_type".equals(chaveNormalizada)) {
+        var chaveLower = chaveNormalizada.toLowerCase(Locale.ROOT);
+        if ("eventtype".equals(chaveLower) || "event_type".equals(chaveLower)) {
             return "eventType";
         }
         return chaveNormalizada;

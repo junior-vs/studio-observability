@@ -190,21 +190,21 @@ Pipeline de logging estruturado consistente, com campos canonicos e sem vazament
 
 ### Checklist
 
-- [ ] `log_entrypoint` substitui `log_canal`.
-- [ ] Campos da DSL sao removidos do MDC apos a emissao.
-- [ ] Campos de contexto de requisicao permanecem ate o final da resposta.
-- [ ] `eventType` e canonizado corretamente.
-- [ ] Chaves sensiveis sao mascaradas.
-- [ ] Testes cobrem valores nulos, vazios e fallback.
+- [x] `log_entrypoint` substitui `log_canal`.
+- [x] Campos da DSL sao removidos do MDC apos a emissao.
+- [x] Campos de contexto de requisicao permanecem ate o final da resposta.
+- [x] `eventType` e canonizado corretamente.
+- [x] Chaves sensiveis sao mascaradas.
+- [x] Testes cobrem valores nulos, vazios e fallback.
 
 ### Criterios de Aceite
 
-- Um evento minimo gera `message`, `log_classe` e `log_metodo`.
-- Um evento com entrypoint gera `log_entrypoint`.
-- Um evento com `.comDetalhe("pedidoId", 123)` gera `detalhe_pedidoId`.
-- Um evento com `.comDetalhe("token", valor)` gera `detalhe_token=****`.
-- Apos uma emissao, `log_classe`, `log_metodo`, `log_motivo`, `log_entrypoint` e `detalhe_*` nao permanecem no MDC.
-- Ao final de uma requisicao HTTP, o MDC e limpo.
+- [x] Um evento minimo gera `message`, `log_classe` e `log_metodo`.
+- [x] Um evento com entrypoint gera `log_entrypoint`.
+- [x] Um evento com `.comDetalhe("pedidoId", 123)` gera `detalhe_pedidoId`.
+- [x] Um evento com `.comDetalhe("token", valor)` gera `detalhe_token=****`.
+- [x] Apos uma emissao, `log_classe`, `log_metodo`, `log_motivo`, `log_entrypoint` e `detalhe_*` nao permanecem no MDC.
+- [x] Ao final de uma requisicao HTTP, o MDC e limpo.
 
 ## Sprint 3 - Tracing: `@Traced`, Interceptor e Enriquecimento
 
