@@ -264,6 +264,8 @@ API de tracing publica com `@Traced`, interoperando corretamente com `@Logged`, 
 
 ## Sprint 4 - Metricas e Observabilidade do Metodo
 
+**Status:** Finalizada.
+
 ### Objetivo
 
 Estabilizar metricas automaticas de `@Logged`, garantindo nomes, tags de baixa cardinalidade e isolamento de falhas de Micrometer.
@@ -295,20 +297,20 @@ Metricas automaticas de metodo confiaveis, opcionais e seguras para uso em aplic
 
 ### Checklist
 
-- [ ] Timer de execucao usa nome com prefixo da aplicacao.
-- [ ] Counter de falha usa nome com prefixo da aplicacao.
-- [ ] Tags sao de baixa cardinalidade.
-- [ ] `MeterRegistry` ausente e tratado.
-- [ ] Falhas de metrica nao quebram negocio.
-- [ ] Testes com Micrometer habilitado existem.
+- [x] Timer de execucao usa nome com prefixo da aplicacao.
+- [x] Counter de falha usa nome com prefixo da aplicacao.
+- [x] Tags sao de baixa cardinalidade.
+- [x] `MeterRegistry` ausente e tratado.
+- [x] Falhas de metrica nao quebram negocio.
+- [x] Testes com Micrometer habilitado existem.
 
 ### Criterios de Aceite
 
-- Metodo `@Logged` bem-sucedido registra timer quando Micrometer esta ativo.
-- Metodo `@Logged` que falha incrementa counter por tipo de excecao.
-- Metodo de negocio retorna normalmente quando Micrometer esta ausente.
-- Falha de Micrometer nao altera excecao/retorno do metodo de negocio.
-- Nenhuma metrica automatica usa `userId`, `traceId`, `spanId`, `pedidoId` ou outro identificador de alta cardinalidade como tag.
+- [x] Metodo `@Logged` bem-sucedido registra timer quando Micrometer esta ativo.
+- [x] Metodo `@Logged` que falha incrementa counter por tipo de excecao.
+- [x] Metodo de negocio retorna normalmente quando Micrometer esta ausente.
+- [x] Falha de Micrometer nao altera excecao/retorno do metodo de negocio.
+- [x] Nenhuma metrica automatica usa `userId`, `traceId`, `spanId`, `pedidoId` ou outro identificador de alta cardinalidade como tag.
 
 ## Sprint 5 - Separacao de Artefato, Exemplos e Configuracao
 
