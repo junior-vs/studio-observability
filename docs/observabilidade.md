@@ -4143,6 +4143,9 @@ Antes de aprovar qualquer Pull Request que toque em código de logging, tracing 
 **Logging estruturado:**
 
 - [ ] Nenhum `System.out.println`, `System.err.println` ou `e.printStackTrace()`
+- [ ] Logs de negócio usam a DSL `Log.registrando(Event)`; texto livre em `.registrando(String)` não faz parte do contrato
+- [ ] Todo evento informa Where via `.em(Classe.class, "metodo")` ou `.aqui()`
+- [ ] O How usa `.como(Entrypoint)` com `EntrypointEnum` ou enum de domínio implementando `Entrypoint`
 - [ ] Nenhuma concatenação de string ou `String.format` em mensagens de log
 - [ ] Nenhum `log.error(e.getMessage())` — objeto de exceção completo passado ao terminador `.erro(e)`
 - [ ] Nenhuma mensagem genérica — identificadores de entidade presentes via `.comDetalhe()`
@@ -4156,11 +4159,13 @@ Antes de aprovar qualquer Pull Request que toque em código de logging, tracing 
 
 - [ ] Nenhum `UUID.randomUUID()` como `traceId` — contexto OTel via `GerenciadorContextoLog`
 - [ ] MDC limpo no bloco `finally` via `GerenciadorContextoLog.limpar()` — nunca depende de sobrescrita
-- [ ] Nenhum `MDC.put()` direto fora do `GerenciadorContextoLog`
+- [ ] Nenhum `MDC.put()` direto em código de aplicação; na biblioteca, acesso direto fica restrito a gerenciadores, interceptors, enriquecedores e DSL autorizados
+- [ ] Chaves de MDC vêm de `CamposMdc`; nenhum literal como `log_canal` ou sinônimo fora do catálogo canônico
 - [ ] Métodos que retornam `Uni<T>` ou `Multi<T>` com `@Traced`: verificar que logs em continuations reativos contêm `spanId` não nulo e não vazio
 
 **Tracing:**
 
+- [ ] API pública usa `@Traced`; `@Rastreado` não deve aparecer em código novo nem como contrato atual
 - [ ] `@Traced` e `@Logged` no mesmo bean: verificar que `@Priority` segue a convenção `1000/2000` (`TracingInterceptor` antes de `LogInterceptor`)
 - [ ] Enriquecedores de negócio: nenhum dado sensível adicionado como atributo de span
 - [ ] Falhas de infraestrutura OTel (`span.end()`, `span.setStatus()`) tratadas com `try-catch` — não propagam como exceção de negócio
@@ -4168,6 +4173,7 @@ Antes de aprovar qualquer Pull Request que toque em código de logging, tracing 
 **Métricas:**
 
 - [ ] Nenhuma tag de alta cardinalidade (`userId`, `traceId`, `pedidoId`) em counter, timer ou gauge
+- [ ] Métricas automáticas de `@Logged` mantêm apenas tags de baixa cardinalidade (`classe`, `metodo`, `excecao`)
 - [ ] Gauges com `Gauge.builder` ou `gaugeCollectionSize`: referência forte ao objeto observado mantida pelo bean
 - [ ] Falhas de `MeterRegistry` tratadas com `try-catch` — não interrompem o fluxo de negócio
 

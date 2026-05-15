@@ -366,6 +366,8 @@ Artefato principal consumivel como biblioteca, com exemplos separados e document
 
 ## Sprint 6 - Governanca, Testes de Contrato e Qualidade
 
+**Status:** Finalizada.
+
 ### Objetivo
 
 Fechar a implementacao com testes de contrato, validacoes de arquitetura e checklist de governanca para evolucao futura.
@@ -401,20 +403,27 @@ Versao candidata da biblioteca com API publica estabilizada, testes de contrato 
 
 ### Checklist
 
-- [ ] Suite de testes passa.
-- [ ] Testes de contrato cobrem APIs publicas.
-- [ ] Testes de arquitetura cobrem padroes proibidos principais.
-- [ ] Documentacao e README convergem com implementacao.
-- [ ] Build JVM passa.
-- [ ] Native build validado ou risco documentado.
+- [x] Suite de testes passa.
+- [x] Testes de contrato cobrem APIs publicas.
+- [x] Testes de arquitetura cobrem padroes proibidos principais.
+- [x] Documentacao e README convergem com implementacao.
+- [x] Build JVM passa.
+- [x] Native build validado ou risco documentado.
 
 ### Criterios de Aceite
 
-- `mvn test` passa no modulo da biblioteca.
-- Build JVM passa.
-- Documentacao nao referencia APIs removidas como contrato atual.
-- API publica final esta refletida em README, especificacao e exemplos.
-- Checklist de code review cobre logging, tracing, metricas, MDC e dados sensiveis.
+- [x] `mvn test` passa no modulo da biblioteca.
+- [x] Build JVM passa.
+- [x] Documentacao nao referencia APIs removidas como contrato atual.
+- [x] API publica final esta refletida em README, especificacao e exemplos.
+- [x] Checklist de code review cobre logging, tracing, metricas, MDC e dados sensiveis.
+
+### Validacao e Riscos Remanescentes
+
+- Testes de contrato adicionados para `Log`, `Event`, `Entrypoint`, `@Logged`, `@Traced` e enriquecedores CDI.
+- Testes de arquitetura adicionados para bloquear `System.out`, `System.err`, `printStackTrace`, pacote de exemplo no core, `log_canal`, `@Rastreado`, MDC direto fora dos componentes autorizados e dependencias exclusivas de exemplo no core.
+- Build JVM validado no modulo da biblioteca.
+- Native image containerizado nao foi executado nesta sprint por depender de ambiente Docker/GraalVM disponivel no executor. Risco documentado para v0.3: validar o build nativo completo em pipeline com Docker. A revisao de codigo nao identificou necessidade de reflection customizada; `.aqui()` usa `StackWalker` do Java 21 e os componentes CDI permanecem descobertos pelo build do Quarkus.
 
 ## 4. Ordem Recomendada de Execucao
 
@@ -437,6 +446,7 @@ Versao candidata da biblioteca com API publica estabilizada, testes de contrato 
 | Configuracao do core impor comportamento a consumidores | Alto | Limpar `application.properties` e documentar responsabilidades da aplicacao |
 | Falhas de OTel/Micrometer afetarem negocio | Alto | Testes com mocks/fakes que lancam excecao |
 | Exemplos dentro do core virarem comportamento em producao | Medio | Extrair pacote `example` antes de estabilizar versao |
+| Native image nao validado localmente | Medio | Executar build nativo containerizado em pipeline v0.3 com Docker/GraalVM e registrar resultado |
 
 ## 6. Definition of Done Global
 
