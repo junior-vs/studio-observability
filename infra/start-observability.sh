@@ -19,8 +19,7 @@ echo "  📝 Graylog:        http://localhost:9000 (admin/admin)"
 
 echo ""
 echo "🔧 Para iniciar a aplicação:"
-echo "  cd logging-quarkus"
-echo "  ./mvnw quarkus:dev"
+echo "  mvn -pl examples/logging-quarkus-example quarkus:dev"
 
 echo ""
 echo "📖 Documentação completa: OBSERVABILITY.md"

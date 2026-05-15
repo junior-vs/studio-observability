@@ -314,6 +314,8 @@ Metricas automaticas de metodo confiaveis, opcionais e seguras para uso em aplic
 
 ## Sprint 5 - Separacao de Artefato, Exemplos e Configuracao
 
+**Status:** Finalizada.
+
 ### Objetivo
 
 Separar biblioteca principal de exemplos, reduzir configuracoes impostas e preparar o artefato para consumo por outros projetos Quarkus.
@@ -347,20 +349,20 @@ Artefato principal consumivel como biblioteca, com exemplos separados e document
 
 ### Checklist
 
-- [ ] `br.com.vsjr.labs.example` nao e empacotado no core.
-- [ ] Exemplos estao em modulo/projeto/documentacao separado.
-- [ ] Dependencias exclusivas de exemplo nao estao no core.
-- [ ] Configuracao default nao age como aplicacao final.
-- [ ] README tem guia de consumo.
-- [ ] Paths em docs estao atualizados.
+- [x] `br.com.vsjr.labs.example` nao e empacotado no core.
+- [x] Exemplos estao em modulo/projeto/documentacao separado.
+- [x] Dependencias exclusivas de exemplo nao estao no core.
+- [x] Configuracao default nao age como aplicacao final.
+- [x] README tem guia de consumo.
+- [x] Paths em docs estao atualizados.
 
 ### Criterios de Aceite
 
-- Um projeto Quarkus consumidor consegue adicionar a biblioteca como dependencia.
-- O artefato principal nao expoe endpoints REST de exemplo.
-- O artefato principal nao registra gauges de exemplo automaticamente.
-- A documentacao mostra como executar exemplos separados.
-- Configuracoes de producao permanecem sob controle da aplicacao consumidora.
+- [x] Um projeto Quarkus consumidor consegue adicionar a biblioteca como dependencia.
+- [x] O artefato principal nao expoe endpoints REST de exemplo.
+- [x] O artefato principal nao registra gauges de exemplo automaticamente.
+- [x] A documentacao mostra como executar exemplos separados.
+- [x] Configuracoes de producao permanecem sob controle da aplicacao consumidora.
 
 ## Sprint 6 - Governanca, Testes de Contrato e Qualidade
 

@@ -78,68 +78,10 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- ================================================================
-             DEPENDÊNCIAS DE EXEMPLO — marcar como optional (Sprint 0)
-             Não pertencem ao core da biblioteca. Serão extraídas para um
-             módulo/projeto separado na Sprint 5.
-             Marcadas como <optional>true</optional> para não propagar a
-             dependência transitiva a consumidores desta biblioteca.
-             ================================================================ -->
-
-        <!-- REST: necessário apenas para HelloworldResource e HelloService (exemplo) -->
+        <!-- REST/JAX-RS: necessário para registrar LogContextoFiltro em aplicações HTTP. -->
         <dependency>
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-rest</artifactId>
-            <optional>true</optional>
-        </dependency>
-
-        <!-- Info endpoint: exemplo de endpoint de informações -->
-        <dependency>
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-info</artifactId>
-            <optional>true</optional>
-        </dependency>
-
-        <!-- REST Client: necessário apenas para exemplos de cliente HTTP -->
-        <dependency>
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-rest-client</artifactId>
-            <optional>true</optional>
-        </dependency>
-
-        <!-- JFR: tracing via Java Flight Recorder — dev/observabilidade experimental -->
-        <dependency>
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-jfr</artifactId>
-            <optional>true</optional>
-        </dependency>
-
-        <!-- Dev Services de observabilidade: apenas para ambiente de desenvolvimento -->
-        <dependency>
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-observability-devservices</artifactId>
-            <optional>true</optional>
-        </dependency>
-
-        <!-- REST Client Jackson: JSON para exemplos de cliente REST -->
-        <dependency>
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-rest-client-jackson</artifactId>
-            <optional>true</optional>
-        </dependency>
-
-        <!-- Hibernate Validator: validação de request para exemplos REST -->
-        <dependency>
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-hibernate-validator</artifactId>
-            <optional>true</optional>
-        </dependency>
-
-        <!-- REST Jackson: serialização JSON para exemplos de resource REST -->
-        <dependency>
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-rest-jackson</artifactId>
-            <optional>true</optional>
         </dependency>
 
         <!--
@@ -147,15 +89,6 @@
             quarkus-micrometer-opentelemetry quando o OTel Collector é o único pipeline.
             Mutuamente exclusivo com registry-prometheus. Ver concepts/METRICS.md §16.
         -->
-
-        <!-- Scheduler: necessário apenas para os exemplos de Gauge com @Scheduled
-             em br.com.vsjr.labs.example.metrics. Extrair na Sprint 5. -->
-        <dependency>
-            <groupId>io.quarkus</groupId>
-            <artifactId>quarkus-scheduler</artifactId>
-            <optional>true</optional>
-        </dependency>
-
 
     </dependencies>
 

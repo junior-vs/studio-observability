@@ -9,5 +9,6 @@
 
   <modules>
     <module>lib-logging-quarkus</module>
+    <module>examples/logging-quarkus-example</module>
   </modules>
 </project>

@@ -18,8 +18,7 @@ Write-Host "  📝 Graylog:     http://localhost:9000 (admin/admin)" -Foreground
 
 Write-Host ""
 Write-Host "🔧 Para iniciar a aplicação:" -ForegroundColor Cyan
-Write-Host "  cd logging-quarkus" -ForegroundColor White
-Write-Host "  .\mvnw.cmd quarkus:dev" -ForegroundColor White
+Write-Host "  mvn -pl examples/logging-quarkus-example quarkus:dev" -ForegroundColor White
 
 Write-Host ""
 Write-Host "📖 Documentação completa: OBSERVABILITY.md" -ForegroundColor Cyan

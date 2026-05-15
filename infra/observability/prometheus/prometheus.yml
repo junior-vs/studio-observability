@@ -28,8 +28,8 @@ scrape_configs:
     static_configs:
       - targets: ['host.docker.internal:8080']
         labels:
-          application: 'lib-full-logging'
-          service: 'logging-quarkus'
+          application: 'logging-quarkus-example'
+          service: 'logging-quarkus-example'
 
   # OpenTelemetry Collector - Métricas
   - job_name: 'otel-collector'

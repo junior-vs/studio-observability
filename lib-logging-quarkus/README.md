@@ -16,7 +16,7 @@ The library enforces a structured **5W1H** logging contract at compile time usin
 - **Automatic PII and credential masking** — `token`, `senha`, `cpf`, `email`, and similar keys are redacted before logging, with no extra configuration
 - **Extensible enrichment pipelines** — add `EnriquecedorContexto` and `EnriquecedorTracing` beans to enrich MDC and span attributes without modifying library code
 - **HTTP request lifecycle** — `LogContextoFiltro` initialises correlation fields (`traceId`, `spanId`, `userId`, `applicationName`) on every inbound request and cleans the MDC on response
-- **JSON-first logging** — structured JSON output via `quarkus-logging-json` with file rotation in production
+- **JSON-ready logging** — structured JSON output via `quarkus-logging-json`, with operational policies controlled by the consuming application
 - **OTel integration** — traces and logs exported via OTLP/gRPC; W3C trace context propagation; configurable sampling per environment
 
 ## Requirements
@@ -27,24 +27,41 @@ The library enforces a structured **5W1H** logging contract at compile time usin
 | Quarkus | 3.32+ |
 | Maven | 3.9+ |
 
-## Quick start
+## Installation
 
-```bash
-# Clone and run in development mode
-git clone <repo-url>
-cd lib-logging-quarkus
-./mvnw quarkus:dev
+Add the library to a Quarkus application:
+
+```xml
+<dependency>
+    <groupId>br.com.vsjr.labs</groupId>
+    <artifactId>lib-logging-quarkus</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+</dependency>
 ```
 
-The demo application starts at `http://localhost:8080`. The [Dev UI](http://localhost:8080/q/dev/) is available in dev mode.
+Local development from this repository:
+
+```bash
+mvn -pl lib-logging-quarkus test
+mvn -pl lib-logging-quarkus install
+```
+
+## Example App
+
+Examples are intentionally outside the library artifact, under `examples/logging-quarkus-example`.
+
+Run the example application:
+
+```bash
+cd examples/logging-quarkus-example
+mvn quarkus:dev
+```
 
 Try the example endpoints:
 
 ```bash
-# Basic hello — demonstrates @Logged + @Traced at method level
 curl http://localhost:8080/hello/world
 
-# Order lookup — demonstrates comDetalhe() with automatic PII masking
 curl "http://localhost:8080/hello/pedido?pedidoId=123&token=secret&cpf=000.000.000-00"
 ```
 
@@ -220,54 +237,42 @@ Follow [OTel Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/)
 
 ## Configuration
 
-Key properties in `application.properties`:
+The library does not impose production logging, file, OTel endpoint, sampling, or application-name policies. Configure those in the consuming application.
+
+Common application properties:
 
 ```properties
 # Application identity (used in MDC and OTel resource attributes)
 quarkus.application.name=my-service
 
-# JSON logging (enabled by default for all profiles)
+# JSON logging, if desired by the application
 quarkus.log.json=true
 quarkus.log.level=INFO
 quarkus.log.category."br.com.vsjr.labs".level=DEBUG
 
-# OTLP exporter — override per environment
+# OTLP exporter, if the application exports traces/logs
 %dev.quarkus.otel.exporter.otlp.endpoint=http://localhost:4317
 %prod.quarkus.otel.exporter.otlp.endpoint=http://otel-collector:4317
 
-# Micrometer metrics (disabled by default — enable per environment)
-quarkus.micrometer.enabled=false
-quarkus.micrometer.export.prometheus.enabled=false
+# Automatic @Logged method metrics
+quarkus.micrometer.enabled=true
+quarkus.micrometer.export.prometheus.enabled=true
 ```
 
-| Profile | Console | File | OTel sampling |
-|---|---|---|---|
-| `dev` | JSON + color | disabled | 100% (always_on) |
-| `prod` | JSON | JSON + rotation (50 MB, 10 backups) | 10% (traceidratio) |
-
 > [!NOTE]
-> Micrometer metrics (`metodo.execucao` timer and `metodo.falha` counter) are implemented in `LogInterceptor` but disabled by default. Set `quarkus.micrometer.enabled=true` to activate them in your target environment.
+> Micrometer metrics (`<application>.metodo.execucao` timer and `<application>.metodo.falha` counter) are emitted only when a `MeterRegistry` is available.
 
 ## Build and packaging
 
 ```bash
 # Run tests
-./mvnw test
+mvn -pl lib-logging-quarkus test
 
-# Package as JVM JAR
-./mvnw package
-java -jar target/quarkus-app/quarkus-run.jar
+# Package library JAR
+mvn -pl lib-logging-quarkus package
 
-# Package as uber-JAR
-./mvnw package -Dquarkus.package.jar.type=uber-jar
-java -jar target/*-runner.jar
-
-# Build native executable (requires GraalVM)
-./mvnw package -Dnative
-
-# Build native executable inside a container (no local GraalVM needed)
-./mvnw package -Dnative -Dquarkus.native.container-build=true
-./target/lib-logging-quarkus-1.0.0-SNAPSHOT-runner
+# Run example app
+mvn -pl examples/logging-quarkus-example quarkus:dev
 ```
 
 ## Related guides

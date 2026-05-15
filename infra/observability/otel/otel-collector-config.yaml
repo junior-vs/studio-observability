@@ -24,7 +24,7 @@ processors:
   resource:
     attributes:
       - key: service.name
-        value: lib-full-logging
+        value: logging-quarkus-example
         action: upsert
       - key: deployment.environment
         value: development

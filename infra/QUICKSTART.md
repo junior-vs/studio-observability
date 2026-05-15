@@ -6,9 +6,8 @@
 # 1. Iniciar stack de observabilidade
 docker-compose up -d
 
-# 2. Iniciar aplicação (em outro terminal)
-cd logging-quarkus
-./mvnw quarkus:dev
+# 2. Iniciar aplicação de exemplo (em outro terminal, na raiz do projeto)
+mvn -pl examples/logging-quarkus-example quarkus:dev
 
 # 3. Acessar dashboards
 # Grafana:    http://localhost:3000 (admin/admin)
@@ -60,9 +59,8 @@ cd logging-quarkus
 # Terminal 1: Inicie a stack
 docker-compose up -d
 
-# Terminal 2: Execute sua aplicação
-cd logging-quarkus
-./mvnw quarkus:dev
+# Terminal 2: Execute a aplicação de exemplo
+mvn -pl examples/logging-quarkus-example quarkus:dev
 
 # Faça suas alterações e teste
 # A aplicação reinicia automaticamente (hot reload)
@@ -79,7 +77,7 @@ cd logging-quarkus
 1. Abra http://localhost:5601 (Kibana)
 2. Vá para **Discover**
 3. Selecione o índice `otel-logs*`
-4. Filtre por `service.name: lib-full-logging`
+4. Filtre por `service.name: logging-quarkus-example`
 
 **Para ver traces:**
 1. No Kibana, vá para **Observability > APM**
@@ -130,10 +128,10 @@ docker-compose down -v
 
 ```bash
 # Dev mode com debug ativo
-./mvnw quarkus:dev -Ddebug=5005
+mvn -pl examples/logging-quarkus-example quarkus:dev -Ddebug=5005
 
-# Build rápido sem testes
-./mvnw clean package -DskipTests
+# Build rápido sem testes da aplicação de exemplo
+mvn -pl examples/logging-quarkus-example package -DskipTests
 
 # Ver métricas direto da aplicação
 curl http://localhost:8080/q/metrics
@@ -224,8 +222,8 @@ docker system prune  # Limpar se necessário
 # Verificar conectividade com OpenTelemetry
 curl http://localhost:4318/v1/traces
 
-# Verificar configuração
-cat logging-quarkus/src/main/resources/application.properties | grep otel
+# Verificar configuração do exemplo
+cat examples/logging-quarkus-example/src/main/resources/application.properties | grep otel
 ```
 
 **Grafana não mostra dados?**

@@ -1,6 +1,6 @@
 # Stack de Observabilidade - Guia de Uso
 
-Este guia descreve como utilizar a stack completa de observabilidade configurada para o projeto `lib-full-logging`.
+Este guia descreve como utilizar a stack completa de observabilidade configurada para o exemplo `logging-quarkus-example`.
 
 ## Serviços Disponíveis
 
@@ -31,15 +31,13 @@ docker-compose ps
 ### 2. Iniciar a Aplicação Quarkus
 
 ```bash
-cd logging-quarkus
-./mvnw quarkus:dev
+mvn -pl examples/logging-quarkus-example quarkus:dev
 ```
 
 Ou no Windows:
 
 ```powershell
-cd logging-quarkus
-.\mvnw.cmd quarkus:dev
+mvn -pl examples/logging-quarkus-example quarkus:dev
 ```
 
 ### 3. Acessar os Dashboards
@@ -117,7 +115,7 @@ cd logging-quarkus
 
 **Taxa de Requisições HTTP:**
 ```promql
-rate(http_server_requests_seconds_count{application="lib-full-logging"}[5m])
+rate(http_server_requests_seconds_count{application="logging-quarkus-example"}[5m])
 ```
 
 **Latência P95:**
@@ -127,12 +125,12 @@ histogram_quantile(0.95, sum(rate(http_server_requests_seconds_bucket[5m])) by (
 
 **Uso de Memória JVM:**
 ```promql
-jvm_memory_used_bytes{application="lib-full-logging", area="heap"}
+jvm_memory_used_bytes{application="logging-quarkus-example", area="heap"}
 ```
 
 **Taxa de Erros:**
 ```promql
-rate(http_server_requests_seconds_count{application="lib-full-logging", status=~"5.."}[5m])
+rate(http_server_requests_seconds_count{application="logging-quarkus-example", status=~"5.."}[5m])
 ```
 
 ### Dashboard de Logs
@@ -142,7 +140,7 @@ rate(http_server_requests_seconds_count{application="lib-full-logging", status=~
 3. Configure a query para buscar logs:
    - Índice: `otel-logs*`
    - Time field: `@timestamp`
-   - Filtros: `service.name:lib-full-logging`
+   - Filtros: `service.name:logging-quarkus-example`
 
 ## Configurando Alertas
 
@@ -263,8 +261,8 @@ docker-compose down -v
 Para executar em modo produção:
 
 ```bash
-./mvnw clean package -Dquarkus.package.type=uber-jar
-java -jar target/logging-quarkus-1.0.0-SNAPSHOT-runner.jar
+mvn -pl examples/logging-quarkus-example package -Dquarkus.package.jar.type=uber-jar
+java -jar examples/logging-quarkus-example/target/*-runner.jar
 ```
 
 ## Próximos Passos
