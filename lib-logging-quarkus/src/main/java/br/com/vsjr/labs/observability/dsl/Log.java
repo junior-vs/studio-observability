@@ -7,6 +7,7 @@ import br.com.vsjr.labs.observability.CamposMdc;
 import br.com.vsjr.labs.observability.ValoresPadrao;
 import br.com.vsjr.labs.observability.security.LocalizacaoMetodo;
 import br.com.vsjr.labs.observability.security.SanitizadorDados;
+import io.opentelemetry.api.trace.Span;
 
 import java.util.LinkedHashMap;
 import java.util.Locale;
@@ -169,7 +170,7 @@ public final class Log implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
      */
     @Override
     public LogEtapas.EtapaOpcional porque(String motivo) {
-        this.motivo = normalizarTextoOpcional(motivo, true);
+        this.motivo = normalizarTextoOpcional(motivo, false);
         return this;
     }
 
@@ -199,7 +200,7 @@ public final class Log implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
      */
     @Override
     public LogEtapas.EtapaOpcional comDetalhe(String chave, Object valor) {
-        var chaveNormalizada = normalizarTextoOpcional(chave, true);
+        var chaveNormalizada = normalizarTextoOpcional(chave, false);
         if (chaveNormalizada == null) {
             return this;
         }
@@ -282,6 +283,10 @@ public final class Log implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
             return;
         }
 
+        // Sincroniza traceId/spanId do span OTel ativo — garante correlação em contextos reativos
+        // onde o span pode ter mudado após o filtro HTTP ter populado o MDC inicialmente.
+        sincronizarTracingDoSpanAtivo();
+
         // Popula MDC com dimensões estruturais do evento
         MDC.put(CamposMdc.LOG_CLASSE.chave(), eventoLog.classe());
         MDC.put(CamposMdc.LOG_METODO.chave(), eventoLog.metodo());
@@ -310,6 +315,26 @@ public final class Log implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
             MDC.remove(CamposMdc.LOG_MOTIVO.chave());
             MDC.remove(CamposMdc.LOG_ENTRYPOINT.chave());
             eventoLog.detalhes().keySet().forEach(chave -> MDC.remove(CamposMdc.PREFIXO_DETALHE + chave));
+        }
+    }
+
+    /**
+     * Sincroniza {@code traceId} e {@code spanId} do span OTel ativo no MDC.
+     *
+     * <p>Chamado no início de cada emissão para garantir correlação correta em contextos
+     * reativos (Mutiny, Vert.x), onde o span ativo pode ter mudado após o filtro HTTP
+     * ter populado o MDC inicialmente. Falhas de OTel são isoladas e não interrompem
+     * o fluxo de negócio.</p>
+     */
+    private static void sincronizarTracingDoSpanAtivo() {
+        try {
+            var spanContext = Span.current().getSpanContext();
+            if (spanContext.isValid()) {
+                MDC.put(CamposMdc.TRACE_ID.chave(), spanContext.getTraceId());
+                MDC.put(CamposMdc.SPAN_ID.chave(), spanContext.getSpanId());
+            }
+        } catch (Exception ignorado) {
+            // Falha em tracing não deve interromper o fluxo de negócio
         }
     }
 
