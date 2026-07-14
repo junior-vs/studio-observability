@@ -1,4 +1,5 @@
 .github/
+.agents/
 AGEND
 # Compiled class file
 *.class

@@ -5,11 +5,14 @@ import org.jboss.logging.MDC;
 
 import br.com.vsjr.labs.observability.CamposMdc;
 import br.com.vsjr.labs.observability.ValoresPadrao;
+import br.com.vsjr.labs.observability.context.EscopoMdc;
 import br.com.vsjr.labs.observability.security.LocalizacaoMetodo;
 import br.com.vsjr.labs.observability.security.SanitizadorDados;
 import io.opentelemetry.api.trace.Span;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
@@ -63,7 +66,7 @@ public final class Log implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
     /**
      * Descrição principal do evento de negócio que será registrada no log.
      */
-    private Event event;
+    private final Event event;
 
     /**
      * Classe associada ao evento — usada para obter o logger JBoss correspondente.
@@ -71,24 +74,24 @@ public final class Log implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
      * logger é obtido a partir de {@link Log} e o nome da classe no evento é
      * {@code "desconhecido"}.
      */
-    private Class<?> classeAlvo;
+    private final Class<?> classeAlvo;
 
     /**
      * Localização técnica estruturada do evento (classe simples + método).
      * Construída em {@link #em} via {@link LocalizacaoMetodo#of} para manter
      * o mesmo contrato de formato usado pelos interceptores.
      */
-    private LocalizacaoMetodo.Localizacao localizacao;
+    private final LocalizacaoMetodo.Localizacao localizacao;
 
     /**
      * Motivo contextual opcional do evento.
      */
-    private String motivo;
+    private final String motivo;
 
     /**
      * Ponto de entrada, meio ou forma de execução associada ao evento.
      */
-    private String entrypoint;
+    private final String entrypoint;
 
     /**
      * Detalhes complementares do evento.
@@ -96,13 +99,20 @@ public final class Log implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
      * <p>{@link LinkedHashMap} é usado para preservar a ordem de inserção,
      * o que ajuda a manter previsibilidade na serialização/visualização do JSON de saída.</p>
      */
-    private final LinkedHashMap<String, Object> detalhes = new LinkedHashMap<>();
+    private final Map<String, Object> detalhes;
 
     /**
      * Construtor privado para forçar o uso do método estático de entrada da DSL
      * {@link #registrando(Event)}.
      */
-    private Log() {
+    private Log(Event event, Class<?> classeAlvo, LocalizacaoMetodo.Localizacao localizacao,
+                String motivo, String entrypoint, Map<String, Object> detalhes) {
+        this.event = event;
+        this.classeAlvo = classeAlvo;
+        this.localizacao = localizacao;
+        this.motivo = motivo;
+        this.entrypoint = entrypoint;
+        this.detalhes = Collections.unmodifiableMap(new LinkedHashMap<>(detalhes));
     }
 
     // -- Ponto de entrada - What -----------------------------------------------
@@ -114,9 +124,8 @@ public final class Log implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
      * @return etapa seguinte, que exige a declaração do Where
      */
     public static LogEtapas.EtapaOnde registrando(Event evento) {
-        var builder = new Log();
-        builder.event = Objects.requireNonNull(evento, "evento nao pode ser nulo");
-        return builder;
+        return new Log(Objects.requireNonNull(evento, "evento nao pode ser nulo"),
+                null, null, null, null, Map.of());
     }
 
     // -- Etapa obrigatória - Where ---------------------------------------------
@@ -134,12 +143,13 @@ public final class Log implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
      */
     @Override
     public LogEtapas.EtapaOpcional em(Class<?> classe, String metodo) {
-        this.classeAlvo = classe;
+        LocalizacaoMetodo.Localizacao localizacaoAtualizada = null;
         if (classe != null) {
             var metodoNorm = normalizarTextoOpcional(metodo, true);
-            this.localizacao = LocalizacaoMetodo.of(classe, metodoNorm != null ? metodoNorm : ValoresPadrao.LOCALIZACAO_DESCONHECIDA);
+            localizacaoAtualizada = LocalizacaoMetodo.of(classe,
+                    metodoNorm != null ? metodoNorm : ValoresPadrao.LOCALIZACAO_DESCONHECIDA);
         }
-        return this;
+        return novo(classe, localizacaoAtualizada, motivo, entrypoint, detalhes);
     }
 
     /**
@@ -151,13 +161,13 @@ public final class Log implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
     @Override
     public LogEtapas.EtapaOpcional aqui() {
         var localizacaoCapturada = capturarLocalizacaoChamada();
-        this.classeAlvo = localizacaoCapturada
+        var classeAtualizada = localizacaoCapturada
                 .<Class<?>>map(LocalizacaoChamada::classe)
                 .orElse(Log.class);
-        this.localizacao = localizacaoCapturada
+        var localizacaoAtualizada = localizacaoCapturada
                 .map(localizacaoCapturadaPilha -> LocalizacaoMetodo.of(localizacaoCapturadaPilha.classe(), localizacaoCapturadaPilha.metodo()))
                 .orElseGet(() -> LocalizacaoMetodo.of(Log.class, ValoresPadrao.LOCALIZACAO_DESCONHECIDA));
-        return this;
+        return novo(classeAtualizada, localizacaoAtualizada, motivo, entrypoint, detalhes);
     }
 
     // -- Etapas opcionais -------------------------------------------------------
@@ -170,8 +180,7 @@ public final class Log implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
      */
     @Override
     public LogEtapas.EtapaOpcional porque(String motivo) {
-        this.motivo = normalizarTextoOpcional(motivo, false);
-        return this;
+        return novo(classeAlvo, localizacao, normalizarTextoOpcional(motivo, false), entrypoint, detalhes);
     }
 
     /**
@@ -182,10 +191,10 @@ public final class Log implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
      */
     @Override
     public LogEtapas.EtapaOpcional como(Entrypoint entrypoint) {
-        this.entrypoint = entrypoint != null
+        var entrypointNormalizado = entrypoint != null
                 ? normalizarTextoOpcional(entrypoint.getEntrypoint(), false)
                 : null;
-        return this;
+        return novo(classeAlvo, localizacao, motivo, entrypointNormalizado, detalhes);
     }
 
     /**
@@ -204,9 +213,9 @@ public final class Log implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
         if (chaveNormalizada == null) {
             return this;
         }
-        // Sanitização automática: credenciais e dados pessoais são mascarados aqui.
-        detalhes.put(chaveNormalizada, SanitizadorDados.sanitizar(chaveNormalizada, valor));
-        return this;
+        var detalhesAtualizados = new LinkedHashMap<>(detalhes);
+        detalhesAtualizados.put(chaveNormalizada, SanitizadorDados.sanitizar(chaveNormalizada, valor));
+        return novo(classeAlvo, localizacao, motivo, entrypoint, detalhesAtualizados);
     }
 
     // -- Terminadores -----------------------------------------------------------
@@ -287,35 +296,34 @@ public final class Log implements LogEtapas.EtapaOnde, LogEtapas.EtapaOpcional {
         // onde o span pode ter mudado após o filtro HTTP ter populado o MDC inicialmente.
         sincronizarTracingDoSpanAtivo();
 
-        // Popula MDC com dimensões estruturais do evento
-        MDC.put(CamposMdc.LOG_CLASSE.chave(), eventoLog.classe());
-        MDC.put(CamposMdc.LOG_METODO.chave(), eventoLog.metodo());
+        // Popula dimensões estruturais em escopo restaurável para não afetar chamadas aninhadas.
+        var camposEvento = new LinkedHashMap<String, Object>();
+        camposEvento.put(CamposMdc.LOG_CLASSE.chave(), eventoLog.classe());
+        camposEvento.put(CamposMdc.LOG_METODO.chave(), eventoLog.metodo());
         if (eventoLog.motivo() != null) {
-            MDC.put(CamposMdc.LOG_MOTIVO.chave(), eventoLog.motivo());
+            camposEvento.put(CamposMdc.LOG_MOTIVO.chave(), eventoLog.motivo());
         }
         if (eventoLog.entrypoint() != null) {
-            MDC.put(CamposMdc.LOG_ENTRYPOINT.chave(), eventoLog.entrypoint());
+            camposEvento.put(CamposMdc.LOG_ENTRYPOINT.chave(), eventoLog.entrypoint());
         }
 
         // Detalhes de negócio: cada entrada vira um campo JSON de primeiro nível
-        eventoLog.detalhes().forEach((chave, valor) -> MDC.put(CamposMdc.PREFIXO_DETALHE + chave, valor != null ? valor.toString() : "null"));
+        eventoLog.detalhes().forEach((chave, valor) -> camposEvento.put(
+                CamposMdc.PREFIXO_DETALHE + chave, valor != null ? valor.toString() : "null"));
 
-        try {
+        try (var escopoMdc = EscopoMdc.aplicar(camposEvento)) {
             // Emissão via JBoss Logging - integração nativa com quarkus-logging-json
             if (causa != null) {
                 logger.log(level, eventoLog.evento(), causa);
             } else {
                 logger.log(level, eventoLog.evento());
             }
-        } finally {
-            // Limpeza dos campos do evento: não remove o contexto da requisição
-            // (traceId, userId), que é responsabilidade do GerenciadorContextoLog
-            MDC.remove(CamposMdc.LOG_CLASSE.chave());
-            MDC.remove(CamposMdc.LOG_METODO.chave());
-            MDC.remove(CamposMdc.LOG_MOTIVO.chave());
-            MDC.remove(CamposMdc.LOG_ENTRYPOINT.chave());
-            eventoLog.detalhes().keySet().forEach(chave -> MDC.remove(CamposMdc.PREFIXO_DETALHE + chave));
         }
+    }
+
+    private Log novo(Class<?> novaClasseAlvo, LocalizacaoMetodo.Localizacao novaLocalizacao,
+                     String novoMotivo, String novoEntrypoint, Map<String, Object> novosDetalhes) {
+        return new Log(event, novaClasseAlvo, novaLocalizacao, novoMotivo, novoEntrypoint, novosDetalhes);
     }
 
     /**

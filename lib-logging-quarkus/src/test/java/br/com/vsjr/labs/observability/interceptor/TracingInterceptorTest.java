@@ -82,6 +82,21 @@ class TracingInterceptorTest {
     }
 
     @Test
+    void rastrear_deve_marcar_erro_grave_e_relancar_o_mesmo_error() {
+        var erroGrave = new AssertionError("falha grave");
+        var gerenciador = new GerenciadorTracingFake(false);
+        var interceptor = new TracingInterceptor(gerenciador);
+
+        var erro = assertThrows(AssertionError.class,
+                () -> interceptor.rastrear(new InvocationContextFake(() -> {
+                    throw erroGrave;
+                })));
+
+        assertSame(erroGrave, erro);
+        assertSame(erroGrave, gerenciador.erroMarcado);
+    }
+
+    @Test
     void rastrear_nao_deve_substituir_excecao_de_negocio_quando_encerrar_span_falhar() {
         var erroNegocio = new Exception("falha de negocio");
         var gerenciador = new GerenciadorTracingFake(true);

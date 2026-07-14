@@ -132,6 +132,41 @@ class GerenciadorContextoLogTest {
                 "Enriquecedores devem ser chamados em ordem crescente de prioridade");
     }
 
+    @Test
+    void escopo_de_enriquecimento_deve_restaurar_contexto_externo_apos_chamada_aninhada() {
+        var chave = CamposMdc.CLASSE.chave();
+        var gerenciador = new GerenciadorContextoLog(APP_TEST, instanceOf(enriquecedorQueDefine(chave, "interno")));
+        MDC.put(chave, "externo");
+
+        try (var escopo = gerenciador.abrirEscopoEnriquecimento(null)) {
+            assertEquals("interno", MDC.get(chave));
+        }
+
+        assertEquals("externo", MDC.get(chave));
+    }
+
+    @Test
+    void escopo_de_enriquecimento_deve_reverter_alteracoes_parciais_quando_enriquecedor_falhar() {
+        var chave = CamposMdc.METODO.chave();
+        var gerenciador = new GerenciadorContextoLog(APP_TEST, instanceOf(enriquecedorQueFalha(chave)));
+        MDC.put(chave, "externo");
+
+        assertThrows(IllegalStateException.class, () -> gerenciador.abrirEscopoEnriquecimento(null));
+
+        assertEquals("externo", MDC.get(chave));
+    }
+
+    @Test
+    void limpar_deve_preservar_campos_que_nao_sao_da_biblioteca() {
+        var gerenciador = new GerenciadorContextoLog(APP_TEST, null);
+        MDC.put("integracao.externa", "preservar");
+        gerenciador.inicializar("user-42");
+
+        gerenciador.limpar();
+
+        assertEquals("preservar", MDC.get("integracao.externa"));
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private EnriquecedorContexto criarEnriquecedorComPrioridade(int prioridade, java.util.List<Integer> ordemCaptura) {
@@ -148,6 +183,25 @@ class GerenciadorContextoLogTest {
             public java.util.Set<String> chavesMdc() {
                 return java.util.Set.of();
             }
+        };
+    }
+
+    private EnriquecedorContexto enriquecedorQueDefine(String chave, String valor) {
+        return new EnriquecedorContexto() {
+            @Override public void enriquecer(InvocationContext ctx) { MDC.put(chave, valor); }
+            @Override public java.util.Set<String> chavesMdc() { return java.util.Set.of(chave); }
+            @Override public int prioridade() { return 10; }
+        };
+    }
+
+    private EnriquecedorContexto enriquecedorQueFalha(String chave) {
+        return new EnriquecedorContexto() {
+            @Override public void enriquecer(InvocationContext ctx) {
+                MDC.put(chave, "parcial");
+                throw new IllegalStateException("falha no enriquecedor");
+            }
+            @Override public java.util.Set<String> chavesMdc() { return java.util.Set.of(chave); }
+            @Override public int prioridade() { return 10; }
         };
     }
 

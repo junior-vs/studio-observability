@@ -66,23 +66,28 @@ public class LogInterceptor {
 
     @AroundInvoke
     public Object interceptar(InvocationContext contexto) throws Exception {
-        gerenciador.enriquecer(contexto);
-        var sample = iniciarAmostra();
-        try {
-            return contexto.proceed(); 
-        } catch (Throwable erro) {
-            registrarFalha(contexto, erro);
-            if (erro instanceof Exception excecao) {
-                throw excecao;
+        try (var escopoMdc = gerenciador.abrirEscopoEnriquecimento(contexto)) {
+            var sample = iniciarAmostra();
+            try {
+                return contexto.proceed();
+            } catch (Throwable erro) {
+                registrarFalha(contexto, erro);
+                relancar(erro);
+                return null; // inalcançável; necessário para análise de fluxo do compilador
+            } finally {
+                registrarExecucao(contexto, sample);
             }
-            if (erro instanceof Error falhaGrave) {
-                throw falhaGrave;
-            }
-            throw new RuntimeException(erro);
-        } finally {
-            registrarExecucao(contexto, sample);
-            gerenciador.limparEnriquecimento();
         }
+    }
+
+    private static void relancar(Throwable erro) throws Exception {
+        if (erro instanceof Exception excecao) {
+            throw excecao;
+        }
+        if (erro instanceof Error falhaGrave) {
+            throw falhaGrave;
+        }
+        throw new RuntimeException(erro);
     }
 
     private Timer.Sample iniciarAmostra() {

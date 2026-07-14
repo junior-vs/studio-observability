@@ -40,7 +40,7 @@ import jakarta.interceptor.InvocationContext;
 public class TracingInterceptor {
 
 
-    GerenciadorTracing gerenciador;
+    private final GerenciadorTracing gerenciador;
 
     public TracingInterceptor(GerenciadorTracing gerenciador) {
         this.gerenciador = gerenciador;
@@ -62,22 +62,46 @@ public class TracingInterceptor {
         // Salva o spanId do pai antes de criar o Child Span para restaurar no finally
         var spanIdPai = (String) MDC.get(CamposMdc.SPAN_ID.chave());
 
-        var contextoSpan = gerenciador.iniciar(nomeSpan, contexto);
+        GerenciadorTracing.ContextoSpan contextoSpan = null;
         try {
+            contextoSpan = gerenciador.iniciar(nomeSpan, contexto);
             return contexto.proceed();
-        } catch (Exception e) {
-            gerenciador.marcarErro(contextoSpan, e);
-            throw e;
+        } catch (Throwable erro) {
+            if (contextoSpan != null) {
+                try {
+                    gerenciador.marcarErro(contextoSpan, erro);
+                } catch (RuntimeException | Error falhaOtel) {
+                    registrarFalhaOtel("marcar erro no span OTel", falhaOtel);
+                }
+            }
+            relancar(erro);
+            return null; // inalcançável; necessário para análise de fluxo do compilador
         } finally {
-            try {
-                gerenciador.encerrar(contextoSpan, spanIdPai);
-            } catch (Exception otelEx) {
-                Log.registrando(EventError.EVENT_ERROR)
-                        .em(TracingInterceptor.class, "rastrear")
-                        .porque("Exceção durante encerramento de span OTel")
-                        .como(EntrypointEnum.INTERNO)
-                        .erro(otelEx);
+            if (contextoSpan != null) {
+                try {
+                    gerenciador.encerrar(contextoSpan, spanIdPai);
+                } catch (RuntimeException | Error otelEx) {
+                    registrarFalhaOtel("encerramento de span OTel", otelEx);
+                }
             }
         }
+    }
+
+    private static void relancar(Throwable erro) throws Exception {
+        if (erro instanceof Exception excecao) {
+            throw excecao;
+        }
+        if (erro instanceof Error falhaGrave) {
+            throw falhaGrave;
+        }
+        throw new RuntimeException(erro);
+    }
+
+    private static void registrarFalhaOtel(String operacao, Throwable causa) {
+        Log.registrando(EventError.EVENT_ERROR)
+                .em(TracingInterceptor.class, "rastrear")
+                .porque("Falha ao " + operacao)
+                .como(EntrypointEnum.INTERNO)
+                .erro(causa);
     }
 }

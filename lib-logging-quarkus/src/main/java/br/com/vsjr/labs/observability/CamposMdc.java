@@ -85,7 +85,10 @@ public enum CamposMdc {
     // -------------------------------------------------------------------------
 
     /** Nome simples da classe da exceção capturada — tag do counter {@code metodo.falha}. */
-    EXCECAO("excecao");
+    EXCECAO("excecao"),
+
+    /** Perfis da identidade autenticada, serializados em ordem estável. */
+    PERFIS_USUARIO("usuario.perfis");
 
     // -------------------------------------------------------------------------
     // Prefixo de campos de negócio (dinâmicos — não enumeráveis)

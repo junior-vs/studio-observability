@@ -1,6 +1,7 @@
 package br.com.vsjr.labs.observability.tracing;
 
 import java.util.Comparator;
+import java.util.List;
 
 import org.jboss.logging.MDC;
 
@@ -45,14 +46,16 @@ import jakarta.interceptor.InvocationContext;
 @ApplicationScoped
 public class GerenciadorTracing {
 
-    Tracer tracer;
-    Instance<EnriquecedorTracing> enriquecedores;
+    private final Tracer tracer;
+    private final List<EnriquecedorTracing> enriquecedores;
 
 
 
     public GerenciadorTracing(OpenTelemetry openTelemetry, Instance<EnriquecedorTracing> enriquecedores) {
         this.tracer = openTelemetry.getTracer(GerenciadorTracing.class.getName());
-        this.enriquecedores = enriquecedores;
+        this.enriquecedores = enriquecedores.stream()
+                .sorted(Comparator.comparingInt(EnriquecedorTracing::prioridade))
+                .toList();
     }
 
     /**
@@ -87,6 +90,7 @@ public class GerenciadorTracing {
      * @return contexto do span criado; deve ser passado para {@link #encerrar}
      */
     public ContextoSpan iniciar(String nomeSpan, InvocationContext contexto) {
+        var spanIdAnterior = MDC.get(CamposMdc.SPAN_ID.chave());
         var span = tracer.spanBuilder(nomeSpan)
                 .setParent(Context.current())
                 .setSpanKind(SpanKind.INTERNAL)
@@ -95,11 +99,21 @@ public class GerenciadorTracing {
         var scope = span.makeCurrent();
         MDC.put(CamposMdc.SPAN_ID.chave(), span.getSpanContext().getSpanId());
 
-        enriquecedores.stream()
-                .sorted(Comparator.comparingInt(EnriquecedorTracing::prioridade))
-                .forEach(e -> e.enriquecer(span, contexto));
-
-        return new ContextoSpan(span, scope);
+        try {
+            enriquecedores.forEach(e -> e.enriquecer(span, contexto));
+            return new ContextoSpan(span, scope, spanIdAnterior);
+        } catch (RuntimeException | Error falha) {
+            try {
+                scope.close();
+            } finally {
+                try {
+                    span.end();
+                } finally {
+                    restaurarSpanId(spanIdAnterior);
+                }
+            }
+            throw falha;
+        }
     }
 
     /**
@@ -114,13 +128,14 @@ public class GerenciadorTracing {
      *                  {@code null} quando não havia span ativo
      */
     public void encerrar(ContextoSpan ctx, String spanIdPai) {
-        ctx.scope().close();
-        ctx.span().end();
-
-        if (spanIdPai != null) {
-            MDC.put(CamposMdc.SPAN_ID.chave(), spanIdPai);
-        } else {
-            MDC.remove(CamposMdc.SPAN_ID.chave());
+        try {
+            ctx.scope().close();
+        } finally {
+            try {
+                ctx.span().end();
+            } finally {
+                restaurarSpanId(ctx.spanIdAnterior() != null ? ctx.spanIdAnterior() : spanIdPai);
+            }
         }
     }
 
@@ -144,6 +159,17 @@ public class GerenciadorTracing {
      * <p>Ambos precisam ser encerrados na ordem correta: Scope primeiro, Span depois.
      * A ordem é preservada pelo método {@link #encerrar}.</p>
      */
-    public record ContextoSpan(Span span, Scope scope) {
+    private static void restaurarSpanId(Object spanIdAnterior) {
+        if (spanIdAnterior == null) {
+            MDC.remove(CamposMdc.SPAN_ID.chave());
+        } else {
+            MDC.put(CamposMdc.SPAN_ID.chave(), spanIdAnterior);
+        }
+    }
+
+    public record ContextoSpan(Span span, Scope scope, Object spanIdAnterior) {
+        public ContextoSpan(Span span, Scope scope) {
+            this(span, scope, null);
+        }
     }
 }

@@ -1,6 +1,7 @@
 package br.com.vsjr.labs.observability.context.enriquecedor;
 
 import br.com.vsjr.labs.observability.context.GerenciadorContextoLog;
+import br.com.vsjr.labs.observability.CamposMdc;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.interceptor.InvocationContext;
@@ -45,13 +46,13 @@ public class SecurityIdentityEnriquecedorContexto implements EnriquecedorContext
                 .sorted()
                 .collect(Collectors.joining(","));
         if (!perfis.isBlank()) {
-            MDC.put("usuario.perfis", perfis);
+            MDC.put(CamposMdc.PERFIS_USUARIO.chave(), perfis);
         }
     }
 
     @Override
     public Set<String> chavesMdc() {
-        return Set.of("usuario.perfis");
+        return Set.of(CamposMdc.PERFIS_USUARIO.chave());
     }
 
     @Override

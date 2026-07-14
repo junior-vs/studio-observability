@@ -4,6 +4,7 @@ import java.security.Principal;
 
 import br.com.vsjr.labs.observability.ValoresPadrao;
 import br.com.vsjr.labs.observability.context.GerenciadorContextoLog;
+import br.com.vsjr.labs.observability.context.EscopoMdc;
 import br.com.vsjr.labs.observability.dsl.Log;
 import br.com.vsjr.labs.observability.dsl.enums.EventEnum;
 import br.com.vsjr.labs.observability.tracing.GerenciadorTracing;
@@ -37,6 +38,8 @@ import jakarta.ws.rs.ext.Provider;
 @Provider
 public class LogContextoFiltro implements ContainerRequestFilter, ContainerResponseFilter {
 
+    private static final String ESCOPO_MDC_REQUISICAO = LogContextoFiltro.class.getName() + ".escopoMdcRequisicao";
+
 
     GerenciadorContextoLog gerenciador;
     GerenciadorTracing gerenciadorTracing;
@@ -53,13 +56,14 @@ public class LogContextoFiltro implements ContainerRequestFilter, ContainerRespo
     @Override
     public void filter(ContainerRequestContext requestContext) {
         var userId = resolverUsuario(requestContext);
-        var contexto = gerenciador.inicializar(userId);
+        var escopo = gerenciador.abrirEscopoRequisicao(userId);
+        requestContext.setProperty(ESCOPO_MDC_REQUISICAO, escopo);
         gerenciadorTracing.sincronizarMdcRequisicao();
 
         Log
                 .registrando(EventEnum.CONTEXT_TRACE)
                 .em(LogContextoFiltro.class, "filter")
-                .comDetalhe("userId", contexto.userId())
+                .comDetalhe("userId", userId)
                 .debug();
     }
 
@@ -69,7 +73,12 @@ public class LogContextoFiltro implements ContainerRequestFilter, ContainerRespo
     @Override
     public void filter(ContainerRequestContext requestContext,
                        ContainerResponseContext responseContext) {
-        gerenciador.limpar();
+        var escopo = requestContext.getProperty(ESCOPO_MDC_REQUISICAO);
+        if (escopo instanceof EscopoMdc escopoMdc) {
+            escopoMdc.close();
+        } else {
+            gerenciador.limpar();
+        }
     }
 
     // ── Interno ───────────────────────────────────────────────────────────────

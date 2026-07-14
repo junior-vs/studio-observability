@@ -12,6 +12,10 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.logging.MDC;
 
 import java.util.Comparator;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Gerencia o ciclo de vida do MDC para a camada de logging.
@@ -35,8 +39,9 @@ import java.util.Comparator;
 @ApplicationScoped
 public class GerenciadorContextoLog {
 
-    String applicationName;
-    Instance<EnriquecedorContexto> enriquecedores;
+    private final String applicationName;
+    private final List<EnriquecedorContexto> enriquecedores;
+    private final Set<String> chavesEnriquecimento;
 
     /**
      * Construtor CDI: recebe o nome da aplicação e o conjunto de enriquecedores disponíveis.
@@ -49,7 +54,14 @@ public class GerenciadorContextoLog {
             @ConfigProperty(name = "quarkus.application.name", defaultValue = ValoresPadrao.APPLICATION_PADRAO) String applicationName,
             Instance<EnriquecedorContexto> enriquecedores) {
         this.applicationName = applicationName;
-        this.enriquecedores = enriquecedores;
+        this.enriquecedores = enriquecedores == null
+                ? List.of()
+                : enriquecedores.stream()
+                        .sorted(Comparator.comparingInt(EnriquecedorContexto::prioridade))
+                        .toList();
+        this.chavesEnriquecimento = this.enriquecedores.stream()
+                .flatMap(enriquecedor -> enriquecedor.chavesMdc().stream())
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
 
 
@@ -72,6 +84,14 @@ public class GerenciadorContextoLog {
         return new LogContexto(uid, applicationName);
     }
 
+    /** Abre um escopo de contexto de requisição que restaura valores preexistentes ao fechar. */
+    public EscopoMdc abrirEscopoRequisicao(String userId) {
+        var uid = userId != null ? userId : ValoresPadrao.USUARIO_ANONIMO;
+        return EscopoMdc.aplicar(Map.of(
+                CamposMdc.USER_ID.chave(), uid,
+                CamposMdc.APPLICATION_NAME.chave(), applicationName));
+    }
+
     /**
      * Executa o pipeline de enriquecimento do contexto de logging para a invocação interceptada.
      *
@@ -83,9 +103,22 @@ public class GerenciadorContextoLog {
      * @param contexto contexto CDI da invocação
      */
     public void enriquecer(InvocationContext contexto) {
-        enriquecedores.stream()
-                .sorted(Comparator.comparingInt(EnriquecedorContexto::prioridade))
-                .forEach(e -> e.enriquecer(contexto));
+        enriquecedores.forEach(e -> e.enriquecer(contexto));
+    }
+
+    /**
+     * Aplica os enriquecedores e devolve um escopo que restaura o MDC mesmo quando
+     * um enriquecedor falha parcialmente.
+     */
+    public EscopoMdc abrirEscopoEnriquecimento(InvocationContext contexto) {
+        var escopo = EscopoMdc.capturar(chavesEnriquecimento);
+        try {
+            enriquecer(contexto);
+            return escopo;
+        } catch (RuntimeException | Error falha) {
+            escopo.close();
+            throw falha;
+        }
     }
 
     /**
@@ -96,9 +129,7 @@ public class GerenciadorContextoLog {
      * na mesma thread.</p>
      */
     public void limparEnriquecimento() {
-        enriquecedores.stream()
-                .flatMap(e -> e.chavesMdc().stream())
-                .forEach(MDC::remove);
+        chavesEnriquecimento.forEach(MDC::remove);
     }
 
     /**
@@ -108,7 +139,11 @@ public class GerenciadorContextoLog {
      * vazamento de contexto entre threads no pool do Vert.x.</p>
      */
     public void limpar() {
-        MDC.clear();
+        MDC.remove(CamposMdc.USER_ID.chave());
+        MDC.remove(CamposMdc.APPLICATION_NAME.chave());
+        MDC.remove(CamposMdc.TRACE_ID.chave());
+        MDC.remove(CamposMdc.SPAN_ID.chave());
+        limparEnriquecimento();
     }
 
     /**

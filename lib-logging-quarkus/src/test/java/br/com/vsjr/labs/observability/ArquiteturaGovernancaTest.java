@@ -15,6 +15,7 @@ class ArquiteturaGovernancaTest {
     private static final Path MAIN_JAVA = Path.of("src/main/java");
     private static final Set<String> ARQUIVOS_COM_MDC_AUTORIZADO = Set.of(
             "br/com/vsjr/labs/observability/context/GerenciadorContextoLog.java",
+            "br/com/vsjr/labs/observability/context/EscopoMdc.java",
             "br/com/vsjr/labs/observability/context/enriquecedor/MetadadosEnriquecedorContexto.java",
             "br/com/vsjr/labs/observability/context/enriquecedor/SecurityIdentityEnriquecedorContexto.java",
             "br/com/vsjr/labs/observability/dsl/Log.java",
