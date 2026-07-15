@@ -127,6 +127,38 @@ class TracingInterceptorTest {
         assertEquals(List.of("primeiro", "segundo"), ordem);
     }
 
+    @Test
+    void gerenciador_deve_isolar_throwable_nao_fatal_no_enriquecedor() throws Exception {
+        MDC.put(CamposMdc.SPAN_ID.chave(), "span-pai");
+        var ordem = new ArrayList<String>();
+        var gerenciador = new GerenciadorTracing(
+                OpenTelemetry.noop(),
+                instanceOf(List.of(
+                        enriquecedorQueFalha("primeiro", 10, new AssertionError("falha nao fatal")),
+                        enriquecedor("segundo", 20, ordem)
+                )));
+
+        var contextoSpan = gerenciador.iniciar("Teste.operacao", new InvocationContextFake(() -> null));
+        gerenciador.encerrar(contextoSpan);
+
+        assertEquals(List.of("segundo"), ordem);
+        assertEquals("span-pai", MDC.get(CamposMdc.SPAN_ID.chave()));
+    }
+
+    @Test
+    void gerenciador_deve_relancar_falha_fatal_e_restaurar_mdc_no_inicio() {
+        MDC.put(CamposMdc.SPAN_ID.chave(), "span-pai");
+        var gerenciador = new GerenciadorTracing(
+                OpenTelemetry.noop(),
+                instanceOf(List.of(
+                        enriquecedorQueFalha("fatal", 10, new LinkageError("falha fatal"))
+                )));
+
+        assertThrows(LinkageError.class,
+                () -> gerenciador.iniciar("Teste.operacao", new InvocationContextFake(() -> null)));
+        assertEquals("span-pai", MDC.get(CamposMdc.SPAN_ID.chave()));
+    }
+
     private static EnriquecedorTracing enriquecedor(String nome, int prioridade, List<String> ordem) {
         return new EnriquecedorTracing() {
             @Override
@@ -137,6 +169,31 @@ class TracingInterceptorTest {
             @Override
             public int prioridade() {
                 return prioridade;
+            }
+        };
+    }
+
+    private static EnriquecedorTracing enriquecedorQueFalha(String nome, int prioridade, Throwable falha) {
+        return new EnriquecedorTracing() {
+            @Override
+            public void enriquecer(Span span, InvocationContext contexto) {
+                if (falha instanceof RuntimeException runtimeException) {
+                    throw runtimeException;
+                }
+                if (falha instanceof Error erro) {
+                    throw erro;
+                }
+                throw new RuntimeException(falha);
+            }
+
+            @Override
+            public int prioridade() {
+                return prioridade;
+            }
+
+            @Override
+            public String toString() {
+                return nome;
             }
         };
     }

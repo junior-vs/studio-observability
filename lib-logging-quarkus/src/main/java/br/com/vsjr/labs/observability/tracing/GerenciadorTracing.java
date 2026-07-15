@@ -10,6 +10,7 @@ import br.com.vsjr.labs.observability.dsl.Log;
 import br.com.vsjr.labs.observability.dsl.enums.EntrypointEnum;
 import br.com.vsjr.labs.observability.dsl.enums.EventError;
 import br.com.vsjr.labs.observability.tracing.enriquecedor.EnriquecedorTracing;
+import br.com.vsjr.labs.observability.util.FalhasObservabilidade;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
@@ -117,25 +118,36 @@ public class GerenciadorTracing {
         var scope = span.makeCurrent();
         MDC.put(CamposMdc.SPAN_ID.chave(), span.getSpanContext().getSpanId());
 
-        enriquecedores.forEach(e -> enriquecerComIsolamento(e, span, contexto));
-
-        return new ContextoSpan(span, scope, spanIdAnterior);
+        try {
+            enriquecedores.forEach(enriquecedor -> FalhasObservabilidade.executarComIsolamento(
+                    () -> enriquecedor.enriquecer(span, contexto),
+                    falha -> registrarFalhaEnriquecedor(enriquecedor, falha)));
+            return new ContextoSpan(span, scope, spanIdAnterior);
+        } catch (Throwable falha) {
+            limparAposFalhaNoInicio(scope, span, spanIdAnterior);
+            FalhasObservabilidade.relancar(falha);
+            return null; // inalcançável; necessário para análise de fluxo do compilador
+        }
     }
 
-    /**
-     * Falha de um enriquecedor específico não deve impedir os demais de rodar
-     * nem interromper a criação do span.
-     */
-    private void enriquecerComIsolamento(EnriquecedorTracing enriquecedor, Span span, InvocationContext contexto) {
+    private static void registrarFalhaEnriquecedor(EnriquecedorTracing enriquecedor, Throwable falha) {
+        Log.registrando(EventError.EVENT_ERROR)
+                .aqui()
+                .como(EntrypointEnum.INTERNO)
+                .porque(String.format("Falha no enriquecedor de tracing %s",
+                        enriquecedor.getClass().getSimpleName()))
+                .erro(falha);
+    }
+
+    private static void limparAposFalhaNoInicio(Scope scope, Span span, String spanIdAnterior) {
         try {
-            enriquecedor.enriquecer(span, contexto);
-        } catch (RuntimeException falha) {
-            Log.registrando(EventError.EVENT_ERROR)
-                    .aqui()
-                    .como(EntrypointEnum.INTERNO)
-                    .porque(String.format("Falha no enriquecedor de tracing %s",
-                            enriquecedor.getClass().getSimpleName()))
-                    .erro(falha);
+            scope.close();
+        } finally {
+            try {
+                span.end();
+            } finally {
+                restaurarSpanId(spanIdAnterior);
+            }
         }
     }
 

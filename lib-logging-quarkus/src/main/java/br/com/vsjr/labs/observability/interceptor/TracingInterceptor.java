@@ -7,6 +7,7 @@ import br.com.vsjr.labs.observability.dsl.Log;
 import br.com.vsjr.labs.observability.dsl.enums.EntrypointEnum;
 import br.com.vsjr.labs.observability.security.LocalizacaoMetodo;
 import br.com.vsjr.labs.observability.tracing.GerenciadorTracing;
+import br.com.vsjr.labs.observability.util.FalhasObservabilidade;
 import jakarta.annotation.Priority;
 import jakarta.interceptor.AroundInvoke;
 import jakarta.interceptor.Interceptor;
@@ -74,8 +75,8 @@ public class TracingInterceptor {
             if (contextoSpan != null) {
                 try {
                     gerenciador.marcarErro(contextoSpan, erro);
-                } catch (RuntimeException | Error falhaOtel) {
-                    registrarFalhaOtel("marcar erro no span OTel", falhaOtel);
+                } catch (Throwable falhaOtel) {
+                    tratarFalhaOtel("marcar erro no span OTel", falhaOtel);
                 }
             }
             relancar(erro);
@@ -84,8 +85,8 @@ public class TracingInterceptor {
             if (contextoSpan != null) {
                 try {
                     gerenciador.encerrar(contextoSpan);
-                } catch (RuntimeException | Error otelEx) {
-                    registrarFalhaOtel("encerramento de span OTel", otelEx);
+                } catch (Throwable falhaOtel) {
+                    tratarFalhaOtel("encerramento de span OTel", falhaOtel);
                 }
             }
         }
@@ -94,10 +95,17 @@ public class TracingInterceptor {
     private GerenciadorTracing.ContextoSpan iniciarComIsolamento(String nomeSpan, InvocationContext contexto) {
         try {
             return gerenciador.iniciar(nomeSpan, contexto);
-        } catch (RuntimeException | Error falhaOtel) {
-            registrarFalhaOtel("iniciar span OTel", falhaOtel);
+        } catch (Throwable falhaOtel) {
+            tratarFalhaOtel("iniciar span OTel", falhaOtel);
             return null; // método de negócio prossegue sem tracing
         }
+    }
+
+    private static void tratarFalhaOtel(String operacao, Throwable causa) {
+        if (FalhasObservabilidade.isFatal(causa)) {
+            FalhasObservabilidade.relancar(causa);
+        }
+        registrarFalhaOtel(operacao, causa);
     }
 
     private static void relancar(Throwable erro) throws Exception {

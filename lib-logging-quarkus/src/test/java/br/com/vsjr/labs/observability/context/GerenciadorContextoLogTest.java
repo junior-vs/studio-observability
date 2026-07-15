@@ -151,9 +151,20 @@ class GerenciadorContextoLogTest {
         var gerenciador = new GerenciadorContextoLog(APP_TEST, instanceOf(enriquecedorQueFalha(chave)));
         MDC.put(chave, "externo");
 
-        assertThrows(IllegalStateException.class, () -> gerenciador.abrirEscopoEnriquecimento(null));
+        assertDoesNotThrow(() -> {
+            try (var escopo = gerenciador.abrirEscopoEnriquecimento(null)) {
+                assertEquals("parcial", MDC.get(chave));
+            }
+        });
 
         assertEquals("externo", MDC.get(chave));
+    }
+
+    @Test
+    void enriquecer_deve_relancar_falha_fatal() {
+        var gerenciador = new GerenciadorContextoLog(APP_TEST, instanceOf(enriquecedorQueFalhaFatal()));
+
+        assertThrows(LinkageError.class, () -> gerenciador.enriquecer(null));
     }
 
     @Test
@@ -201,6 +212,14 @@ class GerenciadorContextoLogTest {
                 throw new IllegalStateException("falha no enriquecedor");
             }
             @Override public java.util.Set<String> chavesMdc() { return java.util.Set.of(chave); }
+            @Override public int prioridade() { return 10; }
+        };
+    }
+
+    private EnriquecedorContexto enriquecedorQueFalhaFatal() {
+        return new EnriquecedorContexto() {
+            @Override public void enriquecer(InvocationContext ctx) { throw new LinkageError("fatal"); }
+            @Override public java.util.Set<String> chavesMdc() { return java.util.Set.of(); }
             @Override public int prioridade() { return 10; }
         };
     }

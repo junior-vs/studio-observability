@@ -15,6 +15,7 @@ import br.com.vsjr.labs.observability.dsl.Log;
 import br.com.vsjr.labs.observability.dsl.enums.EntrypointEnum;
 import br.com.vsjr.labs.observability.dsl.enums.EventError;
 import br.com.vsjr.labs.observability.tracing.GerenciadorTracing;
+import br.com.vsjr.labs.observability.util.FalhasObservabilidade;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.interceptor.InvocationContext;
@@ -125,25 +126,18 @@ public class GerenciadorContextoLog {
      * @param contexto contexto CDI da invocação
      */
     public void enriquecer(InvocationContext contexto) {
-        enriquecedores.forEach(e -> enriquecerComIsolamento(e, contexto));
+        enriquecedores.forEach(enriquecedor -> FalhasObservabilidade.executarComIsolamento(
+                () -> enriquecedor.enriquecer(contexto),
+                falha -> registrarFalhaEnriquecedor(enriquecedor, falha)));
     }
 
-    /**
-     * Falha de um enriquecedor específico não deve impedir os demais de rodar
-     * nem impedir a execução do método de negócio interceptado.
-     */
-    private void enriquecerComIsolamento(EnriquecedorContexto enriquecedor, InvocationContext contexto) {
-        try {
-            enriquecedor.enriquecer(contexto);
-        } catch (RuntimeException falha) {
-            Log.registrando(EventError.EVENT_ERROR)
-                    .aqui()
-                    .como(EntrypointEnum.INTERNO)
-                    .porque(String.format("Falha no enriquecedor de contexto %s",
-                            enriquecedor.getClass().getSimpleName()))
-                    .porque(falha.getMessage())
-                    .warn();
-        }
+    private static void registrarFalhaEnriquecedor(EnriquecedorContexto enriquecedor, Throwable falha) {
+        Log.registrando(EventError.EVENT_ERROR)
+                .aqui()
+                .como(EntrypointEnum.INTERNO)
+                .porque(String.format("Falha no enriquecedor de contexto %s",
+                        enriquecedor.getClass().getSimpleName()))
+                .erro(falha);
     }
 
     /**
