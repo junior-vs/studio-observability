@@ -59,7 +59,7 @@ class TracingInterceptorTest {
         assertEquals("ok", resultado);
         assertEquals("span-filho", spanDuranteExecucao.get());
         assertEquals("span-pai", MDC.get(CamposMdc.SPAN_ID.chave()));
-        assertEquals("span-pai", gerenciador.spanIdPaiRecebido);
+        assertEquals("span-pai", gerenciador.spanIdAnteriorCapturado);
         assertTrue(gerenciador.iniciado);
         assertTrue(gerenciador.encerrado);
     }
@@ -122,7 +122,7 @@ class TracingInterceptorTest {
                 )));
 
         var contextoSpan = gerenciador.iniciar("Teste.operacao", new InvocationContextFake(() -> null));
-        gerenciador.encerrar(contextoSpan, null);
+        gerenciador.encerrar(contextoSpan);
 
         assertEquals(List.of("primeiro", "segundo"), ordem);
     }
@@ -161,11 +161,10 @@ class TracingInterceptorTest {
 
     private static final class GerenciadorTracingFake extends GerenciadorTracing {
         private final boolean falharEncerramento;
-        private final ContextoSpan contextoSpan = new ContextoSpan(spanProxy(), () -> {
-        });
+        private ContextoSpan contextoSpan;
         private boolean iniciado;
         private boolean encerrado;
-        private String spanIdPaiRecebido;
+        private String spanIdAnteriorCapturado;
         private Throwable erroMarcado;
 
         private GerenciadorTracingFake(boolean falharEncerramento) {
@@ -176,6 +175,10 @@ class TracingInterceptorTest {
         @Override
         public ContextoSpan iniciar(String nomeSpan, InvocationContext contexto) {
             iniciado = true;
+            var spanIdAnteriorBruto = MDC.get(CamposMdc.SPAN_ID.chave());
+            spanIdAnteriorCapturado = spanIdAnteriorBruto != null ? String.valueOf(spanIdAnteriorBruto) : null;
+            contextoSpan = new ContextoSpan(spanProxy(), () -> {
+            }, spanIdAnteriorCapturado);
             MDC.put(CamposMdc.SPAN_ID.chave(), "span-filho");
             return contextoSpan;
         }
@@ -186,14 +189,13 @@ class TracingInterceptorTest {
         }
 
         @Override
-        public void encerrar(ContextoSpan ctx, String spanIdPai) {
-            spanIdPaiRecebido = spanIdPai;
+        public void encerrar(ContextoSpan ctx) {
             if (falharEncerramento) {
                 throw new IllegalStateException("falha otel");
             }
             encerrado = true;
-            if (spanIdPai != null) {
-                MDC.put(CamposMdc.SPAN_ID.chave(), spanIdPai);
+            if (ctx.spanIdAnterior() != null) {
+                MDC.put(CamposMdc.SPAN_ID.chave(), ctx.spanIdAnterior());
             } else {
                 MDC.remove(CamposMdc.SPAN_ID.chave());
             }

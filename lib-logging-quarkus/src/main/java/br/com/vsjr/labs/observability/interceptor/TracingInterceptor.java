@@ -1,9 +1,7 @@
 package br.com.vsjr.labs.observability.interceptor;
 
 import br.com.vsjr.labs.observability.dsl.enums.EventError;
-import org.jboss.logging.MDC;
 
-import br.com.vsjr.labs.observability.CamposMdc;
 import br.com.vsjr.labs.observability.annotations.Traced;
 import br.com.vsjr.labs.observability.dsl.Log;
 import br.com.vsjr.labs.observability.dsl.enums.EntrypointEnum;
@@ -17,28 +15,38 @@ import jakarta.interceptor.InvocationContext;
 /**
  * CDI Interceptor ativado por {@link Traced}.
  *
- * <p>Para cada método interceptado:</p>
+ * <p>
+ * Para cada método interceptado:
+ * </p>
  * <ol>
- *   <li>Captura o {@code spanId} do span pai do MDC</li>
- *   <li>Cria um Child Span OTel e atualiza o MDC com o novo {@code spanId}</li>
- *   <li>Executa o método — o {@link LogInterceptor} registra a localização neste ponto</li>
- *   <li>Em caso de exceção, marca o span como {@code ERROR}</li>
- *   <li>No {@code finally}: encerra o span e restaura o {@code spanId} do pai no MDC</li>
+ * <li>Cria um Child Span OTel e atualiza o MDC com o novo {@code spanId}</li>
+ * <li>O {@code spanId} anterior é capturado dentro do {@link GerenciadorTracing}</li>
+ * <li>Executa o método — o {@link LogInterceptor} registra a localização neste
+ * ponto</li>
+ * <li>Em caso de exceção, marca o span como {@code ERROR}</li>
+ * <li>No {@code finally}: encerra o span e restaura o {@code spanId} do pai no
+ * MDC</li>
  * </ol>
  *
- * <p><b>Sobre a prioridade:</b> {@code APPLICATION - 10} garante execução antes do
- * {@link LogInterceptor} ({@code APPLICATION}). Isso faz com que o {@code spanId}
- * do filho já esteja no MDC quando o {@link LogInterceptor} registrar a localização
- * técnica do método.</p>
+ * <p>
+ * <b>Sobre a prioridade:</b> {@code APPLICATION - 10} garante execução antes do
+ * {@link LogInterceptor} ({@code APPLICATION}). Isso faz com que o
+ * {@code spanId}
+ * do filho já esteja no MDC quando o {@link LogInterceptor} registrar a
+ * localização
+ * técnica do método.
+ * </p>
  *
- * <p><b>Sobre o beans.xml:</b> não necessário — o ArC descobre e ativa este interceptor
- * automaticamente via índice Jandex durante o build do Quarkus.</p>
+ * <p>
+ * <b>Sobre o beans.xml:</b> não necessário — o ArC descobre e ativa este
+ * interceptor
+ * automaticamente via índice Jandex durante o build do Quarkus.
+ * </p>
  */
 @Traced
 @Interceptor
 @Priority(Interceptor.Priority.APPLICATION - 10)
 public class TracingInterceptor {
-
 
     private final GerenciadorTracing gerenciador;
 
@@ -46,9 +54,9 @@ public class TracingInterceptor {
         this.gerenciador = gerenciador;
     }
 
-
     /**
-     * Intercepta o método anotado com {@link Traced} e gerencia o ciclo de vida do span.
+     * Intercepta o método anotado com {@link Traced} e gerencia o ciclo de vida do
+     * span.
      *
      * @param contexto contexto CDI da invocação
      * @return resultado do método interceptado
@@ -59,12 +67,8 @@ public class TracingInterceptor {
         var localizacao = LocalizacaoMetodo.extrair(contexto);
         var nomeSpan = localizacao.operacao();
 
-        // Salva o spanId do pai antes de criar o Child Span para restaurar no finally
-        var spanIdPai = (String) MDC.get(CamposMdc.SPAN_ID.chave());
-
-        GerenciadorTracing.ContextoSpan contextoSpan = null;
+        var contextoSpan = iniciarComIsolamento(nomeSpan, contexto);
         try {
-            contextoSpan = gerenciador.iniciar(nomeSpan, contexto);
             return contexto.proceed();
         } catch (Throwable erro) {
             if (contextoSpan != null) {
@@ -75,15 +79,24 @@ public class TracingInterceptor {
                 }
             }
             relancar(erro);
-            return null; // inalcançável; necessário para análise de fluxo do compilador
+            return null;
         } finally {
             if (contextoSpan != null) {
                 try {
-                    gerenciador.encerrar(contextoSpan, spanIdPai);
+                    gerenciador.encerrar(contextoSpan);
                 } catch (RuntimeException | Error otelEx) {
                     registrarFalhaOtel("encerramento de span OTel", otelEx);
                 }
             }
+        }
+    }
+
+    private GerenciadorTracing.ContextoSpan iniciarComIsolamento(String nomeSpan, InvocationContext contexto) {
+        try {
+            return gerenciador.iniciar(nomeSpan, contexto);
+        } catch (RuntimeException | Error falhaOtel) {
+            registrarFalhaOtel("iniciar span OTel", falhaOtel);
+            return null; // método de negócio prossegue sem tracing
         }
     }
 
